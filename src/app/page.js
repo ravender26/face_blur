@@ -134,6 +134,7 @@ export default function Home() {
         },
         runningMode: "IMAGE",
         minDetectionConfidence: 0.15,
+        minSuppressionThreshold: 0.3, // Non-maximum suppression threshold to handle close/overlapping faces
       });
 
       activeDetectorRef.current = detector;
@@ -239,8 +240,10 @@ export default function Home() {
 
       let lastTime = -1;
 
-      // Offscreen buffer canvas to avoid browser restrictions on drawing a canvas onto itself
+      // Offscreen buffer canvas (same size as main canvas to avoid high-frequency resizing lag)
       const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = width;
+      tempCanvas.height = height;
       const tempCtx = tempCanvas.getContext("2d");
 
       const processFrame = () => {
@@ -292,18 +295,31 @@ export default function Home() {
                   w = Math.max(0, Math.min(w, width - x));
                   h = Math.max(0, Math.min(h, height - y));
 
-                  if (w > 4 && h > 4 && tempCtx) {
-                    // Set temp canvas dimensions to match bounding box
-                    tempCanvas.width = w;
-                    tempCanvas.height = h;
+                  // Calculate square bounding box centered around the face
+                  const side = Math.max(w, h);
+                  const centerX = x + w / 2;
+                  const centerY = y + h / 2;
 
-                    // Copy the face region from the main canvas to the temp canvas
-                    tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+                  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
+                  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
+                  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
+                  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
 
-                    // Draw the temp canvas back onto the main canvas with a blur filter
+                  // Keep it as a square
+                  const finalSide = Math.min(wSq, hSq);
+
+                  if (finalSide > 4 && tempCtx) {
+                    // Copy the square face region from the main canvas to the temp canvas (at absolute position)
+                    tempCtx.clearRect(xSq, ySq, finalSide, finalSide);
+                    tempCtx.drawImage(canvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
+
+                    // Draw the temp canvas back onto the main canvas with a blur filter, clipped to a sharp square
                     ctx.save();
-                    ctx.filter = `blur(${Math.max(12, Math.min(w, h) / 4.5)}px)`;
-                    ctx.drawImage(tempCanvas, 0, 0, w, h, x, y, w, h);
+                    ctx.beginPath();
+                    ctx.rect(xSq, ySq, finalSide, finalSide);
+                    ctx.clip();
+                    ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
+                    ctx.drawImage(tempCanvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
                     ctx.restore();
                   }
                 }
