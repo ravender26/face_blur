@@ -45,20 +45,28 @@ export async function POST(req) {
 
     // Run Python worker as subprocess
     await new Promise((resolve, reject) => {
-      const pyProcess = spawn(pythonCmd, [scriptPath, inputPath, outputPath]);
+      try {
+        const pyProcess = spawn(pythonCmd, [scriptPath, inputPath, outputPath]);
 
-      let stderr = '';
-      pyProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
+        let stderr = '';
+        pyProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
 
-      pyProcess.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Python process exited with code ${code}. Error: ${stderr}`));
-        }
-      });
+        pyProcess.on('error', (err) => {
+          reject(new Error(`Failed to start Python process (${pythonCmd}): ${err.message}. Please verify that Python is installed and added to the PATH in your server environment (serverless Vercel functions do not support running native Python binaries out of the box).`));
+        });
+
+        pyProcess.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`Python process exited with code ${code}. Error: ${stderr}`));
+          }
+        });
+      } catch (err) {
+        reject(new Error(`Failed to spawn Python process: ${err.message}`));
+      }
     });
 
     // Cleanup input file to save space
