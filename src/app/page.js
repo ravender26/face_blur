@@ -21,11 +21,11 @@ export default function Home() {
       }).join(' ');
       setConsoleLogs(prev => [...prev.slice(-40), `[${type}] ${msg}`]);
     };
-    
+
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
-    
+
     console.log = (...args) => {
       originalLog(...args);
       handleLog('log', ...args);
@@ -38,7 +38,7 @@ export default function Home() {
       originalError(...args);
       handleLog('error', ...args);
     };
-    
+
     return () => {
       console.log = originalLog;
       console.warn = originalWarn;
@@ -134,6 +134,7 @@ export default function Home() {
         },
         runningMode: "IMAGE",
         minDetectionConfidence: 0.15,
+        minSuppressionThreshold: 0.3, // Non-maximum suppression threshold to handle close/overlapping faces
       });
 
       activeDetectorRef.current = detector;
@@ -233,14 +234,16 @@ export default function Home() {
       // 5. Start playback and recording
       video.currentTime = 0;
       video.muted = true; // Muted to prevent audio feedback loop/play noise while processing
-      
+
       mediaRecorder.start();
       await video.play();
 
       let lastTime = -1;
 
-      // Offscreen buffer canvas to avoid browser restrictions on drawing a canvas onto itself
+      // Offscreen buffer canvas (same size as main canvas to avoid high-frequency resizing lag)
       const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = width;
+      tempCanvas.height = height;
       const tempCtx = tempCanvas.getContext("2d");
 
       const processFrame = () => {
@@ -292,18 +295,31 @@ export default function Home() {
                   w = Math.max(0, Math.min(w, width - x));
                   h = Math.max(0, Math.min(h, height - y));
 
-                  if (w > 4 && h > 4 && tempCtx) {
-                    // Set temp canvas dimensions to match bounding box
-                    tempCanvas.width = w;
-                    tempCanvas.height = h;
+                  // Calculate square bounding box centered around the face
+                  const side = Math.max(w, h);
+                  const centerX = x + w / 2;
+                  const centerY = y + h / 2;
 
-                    // Copy the face region from the main canvas to the temp canvas
-                    tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+                  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
+                  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
+                  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
+                  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
 
-                    // Draw the temp canvas back onto the main canvas with a blur filter
+                  // Keep it as a square
+                  const finalSide = Math.min(wSq, hSq);
+
+                  if (finalSide > 4 && tempCtx) {
+                    // Copy the square face region from the main canvas to the temp canvas (at absolute position)
+                    tempCtx.clearRect(xSq, ySq, finalSide, finalSide);
+                    tempCtx.drawImage(canvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
+
+                    // Draw the temp canvas back onto the main canvas with a blur filter, clipped to a sharp square
                     ctx.save();
-                    ctx.filter = `blur(${Math.max(12, Math.min(w, h) / 4.5)}px)`;
-                    ctx.drawImage(tempCanvas, 0, 0, w, h, x, y, w, h);
+                    ctx.beginPath();
+                    ctx.rect(xSq, ySq, finalSide, finalSide);
+                    ctx.clip();
+                    ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
+                    ctx.drawImage(tempCanvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
                     ctx.restore();
                   }
                 }
@@ -320,7 +336,7 @@ export default function Home() {
           if (mediaRecorder && mediaRecorder.state === "recording") {
             try {
               mediaRecorder.stop();
-            } catch (_) {}
+            } catch (_) { }
           }
         }
       };
@@ -350,12 +366,12 @@ export default function Home() {
       if (mediaRecorder && mediaRecorder.state === "recording") {
         try {
           mediaRecorder.stop();
-        } catch (_) {}
+        } catch (_) { }
       }
       if (detector) {
         try {
           detector.close();
-        } catch (_) {}
+        } catch (_) { }
       }
       activeDetectorRef.current = null;
       activeRecorderRef.current = null;
@@ -375,12 +391,12 @@ export default function Home() {
     if (activeRecorderRef.current && activeRecorderRef.current.state === "recording") {
       try {
         activeRecorderRef.current.stop();
-      } catch (_) {}
+      } catch (_) { }
     }
     if (activeDetectorRef.current) {
       try {
         activeDetectorRef.current.close();
-      } catch (_) {}
+      } catch (_) { }
     }
     activeDetectorRef.current = null;
     activeRecorderRef.current = null;
@@ -626,7 +642,7 @@ export default function Home() {
                 {[
                   {
                     key: "loading-model",
-                    label: "Initialize AI Model",
+                    label: "Initialize Video Blur Model",
                     desc: "Loading WebAssembly vision runtime & BlazeFace detector",
                   },
                   {
@@ -689,9 +705,9 @@ export default function Home() {
                 How it works
               </h3>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                The video is decoded frame-by-frame in your browser using standard HTML5 APIs. 
-                A **MediaPipe** machine learning model (compiled to WebAssembly for native performance) scans each frame, 
-                detecting face coordinates with GPU acceleration. Custom filters apply localized gaussian-like blur to the face regions 
+                The video is decoded frame-by-frame in your browser using standard HTML5 APIs.
+                A **MediaPipe** machine learning model (compiled to WebAssembly for native performance) scans each frame,
+                detecting face coordinates with GPU acceleration. Custom filters apply localized gaussian-like blur to the face regions
                 on an offscreen Canvas, which are then compiled into a new video file on the client side using the **MediaRecorder** API.
               </p>
             </div>
