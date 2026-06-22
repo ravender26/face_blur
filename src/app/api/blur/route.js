@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 export async function POST(req) {
   try {
@@ -15,14 +16,14 @@ export async function POST(req) {
     const bytes = await videoFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Create temp upload directory in the workspace
-    const uploadDir = path.join(process.cwd(), 'tmp', 'uploads');
+    // Use system temp directory (os.tmpdir()) to ensure write access on read-only hosting environments like Vercel/Docker
+    const tempBaseDir = os.tmpdir();
+    const uploadDir = path.join(tempBaseDir, 'face_blur_uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    // Create public blurred directory if it doesn't exist
-    const outputDir = path.join(process.cwd(), 'public', 'blurred');
+    const outputDir = path.join(tempBaseDir, 'face_blur_blurred');
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }

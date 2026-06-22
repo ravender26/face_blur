@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 export async function GET(req) {
   try {
@@ -12,7 +13,7 @@ export async function GET(req) {
       return new NextResponse('Invalid video name', { status: 400 });
     }
 
-    const videoPath = path.join(process.cwd(), 'public', 'blurred', name);
+    const videoPath = path.join(os.tmpdir(), 'face_blur_blurred', name);
 
     if (!fs.existsSync(videoPath)) {
       return new NextResponse('Video not found', { status: 404 });
