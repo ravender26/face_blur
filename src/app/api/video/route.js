@@ -24,14 +24,14 @@ export async function GET(req) {
     const download = searchParams.get('download') === 'true';
 
     const headers = {
-      'Content-Type': 'video/mp4',
+      'Content-Type': download ? 'application/octet-stream' : 'video/mp4',
       'Content-Length': fileBuffer.length.toString(),
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-store, max-age=0, must-revalidate',
     };
 
     if (download) {
-      headers['Content-Disposition'] = `attachment; filename="blurred-${name}"`;
+      headers['Content-Disposition'] = `attachment; filename="${name}"`;
     }
 
     // Return standard response with headers configured for video playback

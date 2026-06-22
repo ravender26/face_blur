@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "FocusBlur AI - Video Face Anonymization Tool",
+  title: "FocusBlur - Video Face Anonymization Tool",
   description: "Automated real-time video face blurring using OpenCV and MediaPipe.",
 };
 

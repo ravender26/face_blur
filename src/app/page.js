@@ -9,7 +9,7 @@ export default function Home() {
   const [blurredVideoUrl, setBlurredVideoUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
+
   // Status simulation: 'idle', 'uploading', 'detecting', 'blurring', 'encoding', 'done'
   const [status, setStatus] = useState("idle");
   const fileInputRef = useRef(null);
@@ -66,7 +66,7 @@ export default function Home() {
 
   const simulateProgress = () => {
     setStatus("uploading");
-    
+
     // Simulating intermediate statuses
     setTimeout(() => {
       setStatus("detecting");
@@ -135,7 +135,7 @@ export default function Home() {
 
       {/* Main Dashboard Grid */}
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 relative z-10">
-        
+
         {/* Header */}
         <header className="flex justify-between items-center mb-12 border-b border-slate-800/80 pb-6">
           <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent">
-                FocusBlur AI
+                FocusBlur
               </h1>
               <p className="text-xs text-slate-400">Automated Face Anonymization Tool</p>
             </div>
@@ -162,11 +162,11 @@ export default function Home() {
 
         {/* Dashboard Panels */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
+
           {/* Left panel: Upload & Process controls */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl">
-              
+
               {!originalVideoUrl ? (
                 /* Dropzone configuration */
                 <div
@@ -175,11 +175,10 @@ export default function Home() {
                   onDragLeave={handleDrag}
                   onDrop={handleDrop}
                   onClick={triggerFileInput}
-                  className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${
-                    dragActive
-                      ? "border-violet-500 bg-violet-600/5 shadow-inner"
-                      : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
-                  }`}
+                  className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${dragActive
+                    ? "border-violet-500 bg-violet-600/5 shadow-inner"
+                    : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
+                    }`}
                 >
                   <input
                     type="file"
@@ -188,7 +187,7 @@ export default function Home() {
                     accept="video/mp4, video/quicktime, video/mov"
                     className="hidden"
                   />
-                  
+
                   <div className="flex flex-col items-center">
                     <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform duration-300">
                       <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -300,7 +299,7 @@ export default function Home() {
                         </svg>
                         Face Blurring Complete!
                       </span>
-                      <a
+                      {/* <a
                         href={`${blurredVideoUrl}&download=true`}
                         download={`blurred-${file?.name || "video.mp4"}`}
                         className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
@@ -309,7 +308,7 @@ export default function Home() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         Download Blurred Video
-                      </a>
+                      </a> */}
                     </div>
                   )}
                 </div>
@@ -328,7 +327,7 @@ export default function Home() {
 
           {/* Right panel: Active state metrics and steps */}
           <div className="space-y-6">
-            
+
             {/* Status Steps */}
             <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-2xl">
               <h3 className="text-sm font-semibold text-slate-300 mb-6 flex items-center gap-2">
@@ -337,7 +336,7 @@ export default function Home() {
                 </svg>
                 Processing Stages
               </h3>
-              
+
               <ul className="space-y-5">
                 {[
                   {
@@ -386,14 +385,12 @@ export default function Home() {
                         )}
                       </div>
                       <div>
-                        <h4 className={`text-xs font-semibold ${
-                          isDone ? "text-slate-300 line-through opacity-70" : isCurrent ? "text-violet-400" : "text-slate-500"
-                        }`}>
+                        <h4 className={`text-xs font-semibold ${isDone ? "text-slate-300 line-through opacity-70" : isCurrent ? "text-violet-400" : "text-slate-500"
+                          }`}>
                           {step.label}
                         </h4>
-                        <p className={`text-[10px] mt-0.5 leading-relaxed ${
-                          isCurrent ? "text-slate-400" : "text-slate-600"
-                        }`}>
+                        <p className={`text-[10px] mt-0.5 leading-relaxed ${isCurrent ? "text-slate-400" : "text-slate-600"
+                          }`}>
                           {step.desc}
                         </p>
                       </div>
@@ -412,13 +409,13 @@ export default function Home() {
                 How it works
               </h3>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                The Next.js backend handles video transmission and creates localized temporary directories. 
+                The Next.js backend handles video transmission and creates localized temporary directories.
                 A spawned Python child process loads the video frame-by-frame using <strong>OpenCV</strong>,
-                utilizes <strong>MediaPipe</strong> model to detect faces instantly, applies custom Gaussian Blurring on coordinates, 
+                utilizes <strong>MediaPipe</strong> model to detect faces instantly, applies custom Gaussian Blurring on coordinates,
                 and compiles the anonymized frames back into an MP4 video file.
               </p>
             </div>
-            
+
           </div>
         </div>
       </div>
