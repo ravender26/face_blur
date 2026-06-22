@@ -21,11 +21,11 @@ export default function Home() {
       }).join(' ');
       setConsoleLogs(prev => [...prev.slice(-40), `[${type}] ${msg}`]);
     };
-    
+
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
-    
+
     console.log = (...args) => {
       originalLog(...args);
       handleLog('log', ...args);
@@ -38,7 +38,7 @@ export default function Home() {
       originalError(...args);
       handleLog('error', ...args);
     };
-    
+
     return () => {
       console.log = originalLog;
       console.warn = originalWarn;
@@ -234,7 +234,7 @@ export default function Home() {
       // 5. Start playback and recording
       video.currentTime = 0;
       video.muted = true; // Muted to prevent audio feedback loop/play noise while processing
-      
+
       mediaRecorder.start();
       await video.play();
 
@@ -336,7 +336,7 @@ export default function Home() {
           if (mediaRecorder && mediaRecorder.state === "recording") {
             try {
               mediaRecorder.stop();
-            } catch (_) {}
+            } catch (_) { }
           }
         }
       };
@@ -366,12 +366,12 @@ export default function Home() {
       if (mediaRecorder && mediaRecorder.state === "recording") {
         try {
           mediaRecorder.stop();
-        } catch (_) {}
+        } catch (_) { }
       }
       if (detector) {
         try {
           detector.close();
-        } catch (_) {}
+        } catch (_) { }
       }
       activeDetectorRef.current = null;
       activeRecorderRef.current = null;
@@ -391,12 +391,12 @@ export default function Home() {
     if (activeRecorderRef.current && activeRecorderRef.current.state === "recording") {
       try {
         activeRecorderRef.current.stop();
-      } catch (_) {}
+      } catch (_) { }
     }
     if (activeDetectorRef.current) {
       try {
         activeDetectorRef.current.close();
-      } catch (_) {}
+      } catch (_) { }
     }
     activeDetectorRef.current = null;
     activeRecorderRef.current = null;
@@ -642,7 +642,7 @@ export default function Home() {
                 {[
                   {
                     key: "loading-model",
-                    label: "Initialize AI Model",
+                    label: "Initialize Video Blur Model",
                     desc: "Loading WebAssembly vision runtime & BlazeFace detector",
                   },
                   {
@@ -705,9 +705,9 @@ export default function Home() {
                 How it works
               </h3>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                The video is decoded frame-by-frame in your browser using standard HTML5 APIs. 
-                A **MediaPipe** machine learning model (compiled to WebAssembly for native performance) scans each frame, 
-                detecting face coordinates with GPU acceleration. Custom filters apply localized gaussian-like blur to the face regions 
+                The video is decoded frame-by-frame in your browser using standard HTML5 APIs.
+                A **MediaPipe** machine learning model (compiled to WebAssembly for native performance) scans each frame,
+                detecting face coordinates with GPU acceleration. Custom filters apply localized gaussian-like blur to the face regions
                 on an offscreen Canvas, which are then compiled into a new video file on the client side using the **MediaRecorder** API.
               </p>
             </div>
