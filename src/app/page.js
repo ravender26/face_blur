@@ -98,7 +98,17 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        throw new Error(
+          !response.ok
+            ? `Server error (${response.status}): ${text.slice(0, 150)}${text.length > 150 ? '...' : ''}`
+            : "Received invalid non-JSON response from server."
+        );
+      }
 
       if (!response.ok) {
         throw new Error(data.error || "An error occurred while processing the video.");
