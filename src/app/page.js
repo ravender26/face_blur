@@ -589,18 +589,38 @@ export default function Home() {
               const isTargetFace = track ? track.isTarget : false;
 
               if (!isTargetFace && det.side > 4 && tempCtx) {
-                // Crop the face area to a small temp canvas
-                const faceCanvas = document.createElement("canvas");
-                faceCanvas.width = det.side;
-                faceCanvas.height = det.side;
-                const faceCtx = faceCanvas.getContext("2d");
-                faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
+                const blurRadius = Math.max(12, det.side / 4.5);
+                const pad = Math.round(blurRadius * 1.5);
+                
+                // Calculate padded cropping boundaries clamped to video frame size
+                const cropX = Math.max(0, det.x - pad);
+                const cropY = Math.max(0, det.y - pad);
+                const cropW = Math.min(width - cropX, det.side + pad * 2);
+                const cropH = Math.min(height - cropY, det.side + pad * 2);
 
-                // Draw blurred face back to tempCanvas
-                tempCtx.save();
-                tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
-                tempCtx.drawImage(faceCanvas, det.x, det.y);
-                tempCtx.restore();
+                // Offset calculation for boundary conditions
+                const offsetX = det.x - cropX;
+                const offsetY = det.y - cropY;
+
+                // 1. Crop unblurred face with padding
+                const faceCanvas = document.createElement("canvas");
+                faceCanvas.width = cropW;
+                faceCanvas.height = cropH;
+                const faceCtx = faceCanvas.getContext("2d");
+                faceCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+                // 2. Create the destination square canvas
+                const blurredFaceCanvas = document.createElement("canvas");
+                blurredFaceCanvas.width = det.side;
+                blurredFaceCanvas.height = det.side;
+                const blurredFaceCtx = blurredFaceCanvas.getContext("2d");
+
+                // 3. Draw padded face to destination canvas with blur filter applied
+                blurredFaceCtx.filter = `blur(${blurRadius}px)`;
+                blurredFaceCtx.drawImage(faceCanvas, -offsetX, -offsetY);
+
+                // 4. Draw the sharp square blurred canvas back to main tempCanvas
+                tempCtx.drawImage(blurredFaceCanvas, det.x, det.y);
               }
             }
           } else {
@@ -983,18 +1003,38 @@ export default function Home() {
                 const isTargetFace = track ? track.isTarget : false;
 
                 if (!isTargetFace && det.side > 4 && tempCtx) {
-                  // Crop the face area to a small temp canvas
-                  const faceCanvas = document.createElement("canvas");
-                  faceCanvas.width = det.side;
-                  faceCanvas.height = det.side;
-                  const faceCtx = faceCanvas.getContext("2d");
-                  faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
+                  const blurRadius = Math.max(12, det.side / 4.5);
+                  const pad = Math.round(blurRadius * 1.5);
+                  
+                  // Calculate padded cropping boundaries clamped to video frame size
+                  const cropX = Math.max(0, det.x - pad);
+                  const cropY = Math.max(0, det.y - pad);
+                  const cropW = Math.min(width - cropX, det.side + pad * 2);
+                  const cropH = Math.min(height - cropY, det.side + pad * 2);
 
-                  // Draw blurred face back to tempCanvas
-                  tempCtx.save();
-                  tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
-                  tempCtx.drawImage(faceCanvas, det.x, det.y);
-                  tempCtx.restore();
+                  // Offset calculation for boundary conditions
+                  const offsetX = det.x - cropX;
+                  const offsetY = det.y - cropY;
+
+                  // 1. Crop unblurred face with padding
+                  const faceCanvas = document.createElement("canvas");
+                  faceCanvas.width = cropW;
+                  faceCanvas.height = cropH;
+                  const faceCtx = faceCanvas.getContext("2d");
+                  faceCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+                  // 2. Create the destination square canvas
+                  const blurredFaceCanvas = document.createElement("canvas");
+                  blurredFaceCanvas.width = det.side;
+                  blurredFaceCanvas.height = det.side;
+                  const blurredFaceCtx = blurredFaceCanvas.getContext("2d");
+
+                  // 3. Draw padded face to destination canvas with blur filter applied
+                  blurredFaceCtx.filter = `blur(${blurRadius}px)`;
+                  blurredFaceCtx.drawImage(faceCanvas, -offsetX, -offsetY);
+
+                  // 4. Draw the sharp square blurred canvas back to main tempCanvas
+                  tempCtx.drawImage(blurredFaceCanvas, det.x, det.y);
                 }
               }
             } else {
