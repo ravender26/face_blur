@@ -93,6 +93,12 @@ export default function Home() {
     setCameraRecordUrl(null);
     setIsRecordingCamera(false);
 
+    if (typeof window !== "undefined" && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+      setError("Webcam access is not supported by your browser or secure context settings. Please verify you are using HTTPS (Vercel uses SSL automatically) and a supported mobile browser like Safari or Chrome.");
+      setLoading(false);
+      return;
+    }
+
     let detector = null;
 
     try {
@@ -113,11 +119,32 @@ export default function Home() {
       });
       activeDetectorRef.current = detector;
 
-      // 2. Access user camera
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
-      });
+      // 2. Access user camera with progressive fallbacks (handles mobile user-facing cameras and resolution compatibility)
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "user"
+          },
+          audio: false
+        });
+      } catch (err1) {
+        console.warn("First getUserMedia attempt failed, trying user-facing camera fallback...", err1);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false
+          });
+        } catch (err2) {
+          console.warn("Second getUserMedia attempt failed, trying generic camera fallback...", err2);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+        }
+      }
       cameraStreamRef.current = stream;
 
       if (webcamVideoRef.current) {
@@ -225,7 +252,13 @@ export default function Home() {
 
     } catch (err) {
       console.error("Camera start failure:", err);
-      setError(err.message || "Failed to initialize webcam.");
+      let userFriendlyMsg = err.message || "Failed to initialize webcam.";
+
+      if (err.name === "NotAllowedError" || err.message?.toLowerCase().includes("permission") || err.message?.toLowerCase().includes("allowed")) {
+        userFriendlyMsg = "Camera permission was denied. Please make sure camera permission is enabled for this site in your browser settings (look for a settings/lock icon in your browser address bar) and that your mobile OS grants permission to your browser app.";
+      }
+
+      setError(userFriendlyMsg);
       setLoading(false);
       stopCamera();
     }
