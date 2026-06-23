@@ -2,6 +2,221 @@
 
 import { useState, useRef, useEffect } from "react";
 
+// Parse MediaPipe detection bounding box to a standard square format
+function parseDetection(detection, width, height) {
+  const bbox = detection.boundingBox;
+  if (!bbox) return null;
+
+  let x = bbox.originX;
+  let y = bbox.originY;
+  let w = bbox.width;
+  let h = bbox.height;
+
+  // Handle normalized coordinates
+  if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
+    x = x * width;
+    y = y * height;
+    w = w * width;
+    h = h * height;
+  }
+
+  // Secure coordinate clamping
+  x = Math.max(0, Math.min(x, width));
+  y = Math.max(0, Math.min(y, height));
+  w = Math.max(0, Math.min(w, width - x));
+  h = Math.max(0, Math.min(h, height - y));
+
+  // Calculate square bounding box centered around the face
+  const side = Math.max(w, h);
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+
+  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
+  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
+  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
+  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
+
+  const finalSide = Math.min(wSq, hSq);
+
+  if (finalSide > 4) {
+    return {
+      x: xSq,
+      y: ySq,
+      side: finalSide,
+      centerX,
+      centerY
+    };
+  }
+  return null;
+}
+
+// Helper for face recognition on a cropped frame canvas
+async function recognizeFace(cropCanvas, targetDescriptor) {
+  try {
+    // Lower threshold from 0.35 to 0.22 since MediaPipe has already confirmed a face is here
+    const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.22 }))
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (faceapiResult) {
+      const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
+      console.log("Face distance to target:", dist);
+      // Relax threshold from 0.55 to 0.60 to match standard face matcher settings and reduce false negatives
+      if (dist < 0.60) {
+        return true;
+      }
+    }
+  } catch (faceErr) {
+    console.error("Face recognition error:", faceErr);
+  }
+  return false;
+}
+
+// Face Tracking implementation using center distance
+function updateTracks(currentDetections, faceTracks, excludeTarget, targetDescriptor, tempCanvas, width, height, trackIdCounterRef) {
+  const matchedIndices = new Set();
+  const updatedTracks = [];
+
+  for (const det of currentDetections) {
+    let bestTrackIdx = -1;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < faceTracks.length; i++) {
+      const track = faceTracks[i];
+      const dist = Math.sqrt((det.centerX - track.centerX) ** 2 + (det.centerY - track.centerY) ** 2);
+      // Distance threshold: allow movement up to 1.2 * track.side
+      const threshold = track.side * 1.2;
+      if (dist < threshold && dist < minDistance) {
+        minDistance = dist;
+        bestTrackIdx = i;
+      }
+    }
+
+    if (bestTrackIdx !== -1) {
+      // Matched existing track
+      const track = faceTracks[bestTrackIdx];
+      matchedIndices.add(bestTrackIdx);
+      updatedTracks.push({
+        ...track,
+        x: det.x,
+        y: det.y,
+        side: det.side,
+        centerX: det.centerX,
+        centerY: det.centerY,
+        missedFrames: 0,
+        detMatches: (track.detMatches || 0) + 1
+      });
+    } else {
+      // Create new track
+      const newTrackId = trackIdCounterRef.current++;
+      updatedTracks.push({
+        id: newTrackId,
+        x: det.x,
+        y: det.y,
+        side: det.side,
+        centerX: det.centerX,
+        centerY: det.centerY,
+        history: [], // Will be populated in recognition step
+        isTarget: false,
+        missedFrames: 0,
+        detMatches: 1,
+        recognizing: false
+      });
+    }
+  }
+
+  // Carry over missed tracks up to 15 frames
+  for (let i = 0; i < faceTracks.length; i++) {
+    if (!matchedIndices.has(i)) {
+      const track = faceTracks[i];
+      if (track.missedFrames < 15) {
+        updatedTracks.push({
+          ...track,
+          missedFrames: track.missedFrames + 1
+        });
+      }
+    }
+  }
+
+  return updatedTracks;
+}
+
+// Asynchronously process recognition for tracks in the background (no await)
+function processRecognitionForTracks(tracks, excludeTarget, targetDescriptor, tempCanvas, width, height) {
+  if (!excludeTarget || !targetDescriptor || !window.faceapi) return;
+
+  for (const track of tracks) {
+    if (track.missedFrames > 0) continue; // Skip missed tracks
+    if (track.recognizing) continue; // Skip if already running recognition for this track
+
+    const pad = Math.round(track.side * 0.5);
+    const xCrop = Math.max(0, track.x - pad);
+    const yCrop = Math.max(0, track.y - pad);
+    const wCrop = Math.min(width - xCrop, track.side + pad * 2);
+    const hCrop = Math.min(height - yCrop, track.side + pad * 2);
+
+    if (wCrop < 10 || hCrop < 10) continue;
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = wCrop;
+    cropCanvas.height = hCrop;
+    const cropCtx = cropCanvas.getContext("2d");
+    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
+
+    track.recognizing = true;
+
+    recognizeFace(cropCanvas, targetDescriptor)
+      .then((matchedThisFrame) => {
+        track.history.push(matchedThisFrame);
+        if (track.history.length > 15) {
+          track.history.shift();
+        }
+        const matchesCount = track.history.filter(Boolean).length;
+        track.isTarget = (matchesCount / track.history.length) >= 0.3;
+        track.recognizing = false;
+        console.log(`[Face Tracking] Track ID ${track.id} resolved: matched=${matchedThisFrame}, matchesCount=${matchesCount}, length=${track.history.length}, isTarget=${track.isTarget}`);
+      })
+      .catch((err) => {
+        console.error("Async recognition error for track:", track.id, err);
+        track.recognizing = false;
+      });
+  }
+}
+
+// Awaited recognition process for video files (fully blocking frame-by-frame)
+async function processRecognitionForTracksAwaited(tracks, excludeTarget, targetDescriptor, tempCanvas, width, height) {
+  if (!excludeTarget || !targetDescriptor || !window.faceapi) return;
+
+  for (const track of tracks) {
+    if (track.missedFrames > 0) continue; // Skip missed tracks
+
+    const pad = Math.round(track.side * 0.5);
+    const xCrop = Math.max(0, track.x - pad);
+    const yCrop = Math.max(0, track.y - pad);
+    const wCrop = Math.min(width - xCrop, track.side + pad * 2);
+    const hCrop = Math.min(height - yCrop, track.side + pad * 2);
+
+    if (wCrop < 10 || hCrop < 10) continue;
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = wCrop;
+    cropCanvas.height = hCrop;
+    const cropCtx = cropCanvas.getContext("2d");
+    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
+
+    let matchedThisFrame = await recognizeFace(cropCanvas, targetDescriptor);
+
+    track.history.push(matchedThisFrame);
+    if (track.history.length > 15) {
+      track.history.shift();
+    }
+
+    const matchesCount = track.history.filter(Boolean).length;
+    track.isTarget = (matchesCount / track.history.length) >= 0.3;
+    console.log(`[Face Tracking Awaited] Track ID ${track.id}: matched=${matchedThisFrame}, matchesCount=${matchesCount}, length=${track.history.length}, isTarget=${track.isTarget}`);
+  }
+}
+
 export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
@@ -313,100 +528,90 @@ export default function Home() {
       setLoading(false);
 
       // 4. Processing Loop
+      let faceTracks = [];
+      const trackIdCounterRef = { current: 0 };
+
       const processCameraFrame = async () => {
         if (!cameraStreamRef.current || video.paused || video.ended) return;
 
         try {
-          ctx.drawImage(video, 0, 0, width, height);
-
           const timestampMs = performance.now();
-          const detectionResult = detector.detectForVideo(canvas, timestampMs);
+
+          // Draw the current video frame to the offscreen tempCanvas first
+          if (tempCtx) {
+            tempCtx.clearRect(0, 0, width, height);
+            tempCtx.drawImage(video, 0, 0, width, height);
+          }
+
+          // Detect faces on the unblurred offscreen frame
+          const detectionResult = detector.detectForVideo(tempCanvas, timestampMs);
 
           if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
-            const first = detectionResult.detections[0].boundingBox;
             setDebugText(`Detected ${detectionResult.detections.length} face(s)!`);
 
-            if (tempCtx) {
-              tempCtx.clearRect(0, 0, width, height);
-              tempCtx.drawImage(canvas, 0, 0, width, height);
+            // Parse current frame detections
+            const currentDetections = [];
+            for (const detection of detectionResult.detections) {
+              const parsed = parseDetection(detection, width, height);
+              if (parsed) {
+                currentDetections.push(parsed);
+              }
             }
 
-            for (const detection of detectionResult.detections) {
-              const bbox = detection.boundingBox;
-              if (bbox) {
-                let x = bbox.originX;
-                let y = bbox.originY;
-                let w = bbox.width;
-                let h = bbox.height;
+            // Update tracks with matching and history check
+            faceTracks = updateTracks(
+              currentDetections,
+              faceTracks,
+              excludeTarget,
+              targetDescriptor,
+              tempCanvas,
+              width,
+              height,
+              trackIdCounterRef
+            );
 
-                if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
-                  x = x * width;
-                  y = y * height;
-                  w = w * width;
-                  h = h * height;
-                }
+            // Run recognition in the background (no await) to maintain 60fps
+            processRecognitionForTracks(
+              faceTracks,
+              excludeTarget,
+              targetDescriptor,
+              tempCanvas,
+              width,
+              height
+            );
 
-                x = Math.max(0, Math.min(x, width));
-                y = Math.max(0, Math.min(y, height));
-                w = Math.max(0, Math.min(w, width - x));
-                h = Math.max(0, Math.min(h, height - y));
+            // Draw blur for non-target faces on tempCanvas
+            for (const det of currentDetections) {
+              // Find track corresponding to this detection
+              const track = faceTracks.find(
+                t => t.missedFrames === 0 && Math.abs(t.centerX - det.centerX) < 2 && Math.abs(t.centerY - det.centerY) < 2
+              );
+              const isTargetFace = track ? track.isTarget : false;
 
-                const side = Math.max(w, h);
-                const centerX = x + w / 2;
-                const centerY = y + h / 2;
+              if (!isTargetFace && det.side > 4 && tempCtx) {
+                // Crop the face area to a small temp canvas
+                const faceCanvas = document.createElement("canvas");
+                faceCanvas.width = det.side;
+                faceCanvas.height = det.side;
+                const faceCtx = faceCanvas.getContext("2d");
+                faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
 
-                let xSq = Math.max(0, Math.min(centerX - side / 2, width));
-                let ySq = Math.max(0, Math.min(centerY - side / 2, height));
-                let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
-                let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
-
-                const finalSide = Math.min(wSq, hSq);
-
-                let isTargetFace = false;
-                if (excludeTarget && targetDescriptor && window.faceapi) {
-                  try {
-                    const pad = Math.round(finalSide * 0.2);
-                    const xCrop = Math.max(0, xSq - pad);
-                    const yCrop = Math.max(0, ySq - pad);
-                    const wCrop = Math.min(width - xCrop, finalSide + pad * 2);
-                    const hCrop = Math.min(height - yCrop, finalSide + pad * 2);
-
-                    const cropCanvas = document.createElement("canvas");
-                    cropCanvas.width = wCrop;
-                    cropCanvas.height = hCrop;
-                    const cropCtx = cropCanvas.getContext("2d");
-                    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
-
-                    const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.35 }))
-                      .withFaceLandmarks()
-                      .withFaceDescriptor();
-
-                    if (faceapiResult) {
-                      const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
-                      console.log("Webcam face distance to target:", dist);
-                      if (dist < 0.55) {
-                        isTargetFace = true;
-                      }
-                    }
-                  } catch (faceErr) {
-                    console.error("Webcam face recognition error:", faceErr);
-                  }
-                }
-
-                if (!isTargetFace && finalSide > 4 && tempCtx) {
-                  ctx.save();
-                  ctx.beginPath();
-                  ctx.rect(xSq, ySq, finalSide, finalSide);
-                  ctx.clip();
-                  ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
-                  ctx.drawImage(tempCanvas, 0, 0, width, height);
-                  ctx.restore();
-                }
+                // Draw blurred face back to tempCanvas
+                tempCtx.save();
+                tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
+                tempCtx.drawImage(faceCanvas, det.x, det.y);
+                tempCtx.restore();
               }
             }
           } else {
             setDebugText("No faces detected in live feed");
+            // Increment missed frames for all existing tracks
+            faceTracks.forEach(t => t.missedFrames++);
+            faceTracks = faceTracks.filter(t => t.missedFrames < 15);
           }
+
+          // Single synchronous draw of the fully processed offscreen canvas to the visible canvas
+          ctx.drawImage(tempCanvas, 0, 0, width, height);
 
           cameraAnimationFrameIdRef.current = requestAnimationFrame(processCameraFrame);
         } catch (frameErr) {
@@ -704,6 +909,9 @@ export default function Home() {
       tempCanvas.height = height;
       const tempCtx = tempCanvas.getContext("2d");
 
+      let faceTracks = [];
+      const trackIdCounterRef = { current: 0 };
+
       const processFrame = async () => {
         try {
           if (video.paused || video.ended) {
@@ -717,12 +925,15 @@ export default function Home() {
           if (video.currentTime !== lastTime) {
             lastTime = video.currentTime;
 
-            // Draw the current video frame onto the processing canvas
-            ctx.drawImage(video, 0, 0, width, height);
+            // Draw the current video frame to the offscreen tempCanvas first
+            if (tempCtx) {
+              tempCtx.clearRect(0, 0, width, height);
+              tempCtx.drawImage(video, 0, 0, width, height);
+            }
 
-            // Run the face detector on the current canvas frame (using VIDEO mode for temporal tracking)
+            // Detect faces on the unblurred offscreen frame
             const timestampMs = Math.round(video.currentTime * 1000);
-            const detectionResult = detector.detectForVideo(canvas, timestampMs);
+            const detectionResult = detector.detectForVideo(tempCanvas, timestampMs);
 
             if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
               const first = detectionResult.detections[0].boundingBox;
@@ -732,91 +943,68 @@ export default function Home() {
             }
 
             if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
-              // Copy the entire unblurred frame to temp canvas once
-              if (tempCtx) {
-                tempCtx.clearRect(0, 0, width, height);
-                tempCtx.drawImage(canvas, 0, 0, width, height);
-              }
-
+              // Parse current frame detections
+              const currentDetections = [];
               for (const detection of detectionResult.detections) {
-                const bbox = detection.boundingBox;
-                if (bbox) {
-                  let x = bbox.originX;
-                  let y = bbox.originY;
-                  let w = bbox.width;
-                  let h = bbox.height;
-
-                  // Handle normalized coordinates (some MediaPipe versions return 0.0 to 1.0)
-                  if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
-                    x = x * width;
-                    y = y * height;
-                    w = w * width;
-                    h = h * height;
-                  }
-
-                  // Secure coordinate clamping
-                  x = Math.max(0, Math.min(x, width));
-                  y = Math.max(0, Math.min(y, height));
-                  w = Math.max(0, Math.min(w, width - x));
-                  h = Math.max(0, Math.min(h, height - y));
-
-                  // Calculate square bounding box centered around the face
-                  const side = Math.max(w, h);
-                  const centerX = x + w / 2;
-                  const centerY = y + h / 2;
-
-                  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
-                  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
-                  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
-                  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
-
-                  // Keep it as a square
-                  const finalSide = Math.min(wSq, hSq);
-
-                  let isTargetFace = false;
-                  if (excludeTarget && targetDescriptor && window.faceapi) {
-                    try {
-                      const pad = Math.round(finalSide * 0.2);
-                      const xCrop = Math.max(0, xSq - pad);
-                      const yCrop = Math.max(0, ySq - pad);
-                      const wCrop = Math.min(width - xCrop, finalSide + pad * 2);
-                      const hCrop = Math.min(height - yCrop, finalSide + pad * 2);
-
-                      const cropCanvas = document.createElement("canvas");
-                      cropCanvas.width = wCrop;
-                      cropCanvas.height = hCrop;
-                      const cropCtx = cropCanvas.getContext("2d");
-                      cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
-
-                      const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.35 }))
-                        .withFaceLandmarks()
-                        .withFaceDescriptor();
-
-                      if (faceapiResult) {
-                        const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
-                        console.log("Video face distance to target:", dist);
-                        if (dist < 0.55) {
-                          isTargetFace = true;
-                        }
-                      }
-                    } catch (faceErr) {
-                      console.error("Video face recognition error:", faceErr);
-                    }
-                  }
-
-                  if (!isTargetFace && finalSide > 4 && tempCtx) {
-                    // Draw the temp canvas back onto the main canvas with a blur filter, clipped to a sharp square
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.rect(xSq, ySq, finalSide, finalSide);
-                    ctx.clip();
-                    ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
-                    ctx.drawImage(tempCanvas, 0, 0, width, height);
-                    ctx.restore();
-                  }
+                const parsed = parseDetection(detection, width, height);
+                if (parsed) {
+                  currentDetections.push(parsed);
                 }
               }
+
+              // Update tracks with matching and history check
+              faceTracks = updateTracks(
+                currentDetections,
+                faceTracks,
+                excludeTarget,
+                targetDescriptor,
+                tempCanvas,
+                width,
+                height,
+                trackIdCounterRef
+              );
+
+              // Await recognition for perfect frame-by-frame accuracy in video file export
+              await processRecognitionForTracksAwaited(
+                faceTracks,
+                excludeTarget,
+                targetDescriptor,
+                tempCanvas,
+                width,
+                height
+              );
+
+              // Draw blur for non-target faces on tempCanvas
+              for (const det of currentDetections) {
+                // Find track corresponding to this detection
+                const track = faceTracks.find(
+                  t => t.missedFrames === 0 && Math.abs(t.centerX - det.centerX) < 2 && Math.abs(t.centerY - det.centerY) < 2
+                );
+                const isTargetFace = track ? track.isTarget : false;
+
+                if (!isTargetFace && det.side > 4 && tempCtx) {
+                  // Crop the face area to a small temp canvas
+                  const faceCanvas = document.createElement("canvas");
+                  faceCanvas.width = det.side;
+                  faceCanvas.height = det.side;
+                  const faceCtx = faceCanvas.getContext("2d");
+                  faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
+
+                  // Draw blurred face back to tempCanvas
+                  tempCtx.save();
+                  tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
+                  tempCtx.drawImage(faceCanvas, det.x, det.y);
+                  tempCtx.restore();
+                }
+              }
+            } else {
+              // Increment missed frames for all existing tracks
+              faceTracks.forEach(t => t.missedFrames++);
+              faceTracks = faceTracks.filter(t => t.missedFrames < 15);
             }
+
+            // Single synchronous draw of the fully processed offscreen canvas to the visible canvas
+            ctx.drawImage(tempCanvas, 0, 0, width, height);
           }
 
           animationFrameId = requestAnimationFrame(processFrame);
