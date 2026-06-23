@@ -409,7 +409,7 @@ export default function Home() {
         video.pause();
         video.src = "";
         video.load();
-      } catch (_) {}
+      } catch (_) { }
 
       if (descriptors.length === 0) {
         throw new Error("Could not detect any faces in the uploaded selfies or video frames. Please ensure your face is clearly visible.");
@@ -639,7 +639,7 @@ export default function Home() {
     if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
       try {
         cameraRecorderRef.current.stop();
-      } catch (_) {}
+      } catch (_) { }
     }
     cameraRecorderRef.current = null;
 
@@ -660,7 +660,7 @@ export default function Home() {
     if (activeDetectorRef.current) {
       try {
         activeDetectorRef.current.close();
-      } catch (_) {}
+      } catch (_) { }
     }
     activeDetectorRef.current = null;
 
@@ -1126,15 +1126,14 @@ export default function Home() {
         <div className="flex gap-4 mb-8 bg-[#0f131d]/60 border border-slate-800/80 p-1.5 rounded-xl w-fit">
           <button
             onClick={() => handleModeChange("upload")}
-            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-              activeMode === "upload"
+            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${activeMode === "upload"
                 ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
                 : "text-slate-400 hover:text-slate-200"
-            }`}
+              }`}
           >
             Video File Anonymizer
           </button>
-          <button
+          {/* <button
             onClick={() => handleModeChange("camera")}
             className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
               activeMode === "camera"
@@ -1143,7 +1142,7 @@ export default function Home() {
             }`}
           >
             Live Webcam Feed
-          </button>
+          </button> */}
         </div>
 
         {/* Dashboard Panels */}
@@ -1156,171 +1155,171 @@ export default function Home() {
               {activeMode === "upload" && (
                 <>
                   {!originalVideoUrl ? (
-                /* Dropzone configuration */
-                <div
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  onClick={triggerFileInput}
-                  className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${dragActive
-                    ? "border-violet-500 bg-violet-600/5 shadow-inner"
-                    : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
-                    }`}
-                >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="video/mp4, video/quicktime, video/mov"
-                    className="hidden"
-                  />
-
-                  <div className="flex flex-col items-center">
-                    <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform duration-300">
-                      <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                    </div>
-                    <h3 className="text-base font-semibold text-slate-200 mb-1">
-                      Drag & drop your video here
-                    </h3>
-                    <p className="text-xs text-slate-400 mb-4">
-                      or click to browse your files
-                    </p>
-                    <span className="inline-block px-3 py-1 bg-slate-900 border border-slate-800/80 rounded-md text-[10px] text-slate-500 font-mono">
-                      MP4, MOV (max 100MB)
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                /* Selected video actions */
-                <div className="space-y-6">
-                  <div className="flex justify-between items-start border-b border-slate-800/80 pb-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-300 font-mono truncate max-w-[250px] sm:max-w-md">
-                        {file?.name}
-                      </h3>
-                      <p className="text-xs text-slate-500 font-mono">
-                        {(file?.size / (1024 * 1024)).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <button
-                      onClick={resetAll}
-                      disabled={loading}
-                      className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+                    /* Dropzone configuration */
+                    <div
+                      onDragEnter={handleDrag}
+                      onDragOver={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDrop={handleDrop}
+                      onClick={triggerFileInput}
+                      className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${dragActive
+                        ? "border-violet-500 bg-violet-600/5 shadow-inner"
+                        : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
+                        }`}
                     >
-                      Remove
-                    </button>
-                  </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="video/mp4, video/quicktime, video/mov"
+                        className="hidden"
+                      />
 
-                  {/* Video previews */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Source file preview */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
-                        Original Video
-                      </label>
-                      <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
-                        <video
-                          ref={sourceVideoRef}
-                          src={originalVideoUrl}
-                          className="w-full h-full object-contain"
-                          controls={status === "idle" || status === "done"}
-                        />
+                      <div className="flex flex-col items-center">
+                        <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform duration-300">
+                          <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <h3 className="text-base font-semibold text-slate-200 mb-1">
+                          Drag & drop your video here
+                        </h3>
+                        <p className="text-xs text-slate-400 mb-4">
+                          or click to browse your files
+                        </p>
+                        <span className="inline-block px-3 py-1 bg-slate-900 border border-slate-800/80 rounded-md text-[10px] text-slate-500 font-mono">
+                          MP4, MOV (max 100MB)
+                        </span>
                       </div>
                     </div>
+                  ) : (
+                    /* Selected video actions */
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-start border-b border-slate-800/80 pb-4">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-300 font-mono truncate max-w-[250px] sm:max-w-md">
+                            {file?.name}
+                          </h3>
+                          <p className="text-xs text-slate-500 font-mono">
+                            {(file?.size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <button
+                          onClick={resetAll}
+                          disabled={loading}
+                          className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+                        >
+                          Remove
+                        </button>
+                      </div>
 
-                    {/* Processed/Blurred video container */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
-                        Blurred Video Output
-                      </label>
-                      <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
-                        {blurredVideoUrl ? (
-                          <video
-                            src={blurredVideoUrl}
-                            className="w-full h-full object-contain"
-                            controls
-                            autoPlay
-                          />
-                        ) : (status === "loading-model" || status === "processing" || status === "encoding") ? (
-                          <div className="relative w-full h-full flex items-center justify-center">
-                            <canvas
-                              ref={canvasRef}
+                      {/* Video previews */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Source file preview */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+                            Original Video
+                          </label>
+                          <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+                            <video
+                              ref={sourceVideoRef}
+                              src={originalVideoUrl}
                               className="w-full h-full object-contain"
+                              controls={status === "idle" || status === "done"}
                             />
-                            {status === "loading-model" && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
-                                <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-3"></div>
-                                <p className="text-xs font-semibold text-violet-400">Loading Face Detection AI...</p>
-                                <p className="text-[10px] text-slate-500 mt-1">Initializing WebAssembly runtime and models</p>
+                          </div>
+                        </div>
+
+                        {/* Processed/Blurred video container */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+                            Blurred Video Output
+                          </label>
+                          <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+                            {blurredVideoUrl ? (
+                              <video
+                                src={blurredVideoUrl}
+                                className="w-full h-full object-contain"
+                                controls
+                                autoPlay
+                              />
+                            ) : (status === "loading-model" || status === "processing" || status === "encoding") ? (
+                              <div className="relative w-full h-full flex items-center justify-center">
+                                <canvas
+                                  ref={canvasRef}
+                                  className="w-full h-full object-contain"
+                                />
+                                {status === "loading-model" && (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
+                                    <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-3"></div>
+                                    <p className="text-xs font-semibold text-violet-400">Loading Face Detection AI...</p>
+                                    <p className="text-[10px] text-slate-500 mt-1">Initializing WebAssembly runtime and models</p>
+                                  </div>
+                                )}
+                                {status === "encoding" && (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
+                                    <div className="w-10 h-10 border-4 border-fuchsia-500/20 border-t-fuchsia-500 rounded-full animate-spin mb-3"></div>
+                                    <p className="text-xs font-semibold text-fuchsia-400">Encoding Output Video...</p>
+                                    <p className="text-[10px] text-slate-500 mt-1">Packaging tracks into video container</p>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {status === "encoding" && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
-                                <div className="w-10 h-10 border-4 border-fuchsia-500/20 border-t-fuchsia-500 rounded-full animate-spin mb-3"></div>
-                                <p className="text-xs font-semibold text-fuchsia-400">Encoding Output Video...</p>
-                                <p className="text-[10px] text-slate-500 mt-1">Packaging tracks into video container</p>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500">
+                                <svg className="w-8 h-8 text-slate-700 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                                <p className="text-xs">Click &quot;Process Video&quot; to apply blurring effect</p>
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500">
-                            <svg className="w-8 h-8 text-slate-700 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                            </svg>
-                            <p className="text-xs">Click &quot;Process Video&quot; to apply blurring effect</p>
-                          </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Actions buttons */}
-                  {!blurredVideoUrl && !loading && (
-                    <div className="flex justify-end pt-2">
-                      <button
-                        onClick={handleSubmit}
-                        className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Process Video
-                      </button>
+                      {/* Actions buttons */}
+                      {!blurredVideoUrl && !loading && (
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={handleSubmit}
+                            className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Process Video
+                          </button>
+                        </div>
+                      )}
+
+                      {blurredVideoUrl && (
+                        <div className="flex justify-between items-center pt-2">
+                          <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Face Blurring Complete!
+                          </span>
+                          <a
+                            href={blurredVideoUrl}
+                            download={`blurred-${file?.name || "video.mp4"}`}
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download Blurred Video
+                          </a>
+                        </div>
+                      )}
+
+                      {debugText && (
+                        <div className="text-xs font-mono text-violet-400 mt-2 bg-slate-900/60 p-2 rounded-md border border-slate-800/60 text-center">
+                          {debugText}
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  {blurredVideoUrl && (
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Face Blurring Complete!
-                      </span>
-                      <a
-                        href={blurredVideoUrl}
-                        download={`blurred-${file?.name || "video.mp4"}`}
-                        className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download Blurred Video
-                      </a>
-                    </div>
-                  )}
-
-                  {debugText && (
-                    <div className="text-xs font-mono text-violet-400 mt-2 bg-slate-900/60 p-2 rounded-md border border-slate-800/60 text-center">
-                      {debugText}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>)}
+                </>)}
 
               {activeMode === "camera" && (
                 <div className="space-y-6">
@@ -1533,13 +1532,12 @@ export default function Home() {
                 <button
                   onClick={registerTargetProfile}
                   disabled={registeringFace || selfieFiles.length < 4 || !sampleVideoFile}
-                  className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${
-                    registeringFace
+                  className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${registeringFace
                       ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                       : selfieFiles.length >= 4 && sampleVideoFile
-                      ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
-                      : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
-                  }`}
+                        ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
+                        : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
+                    }`}
                 >
                   {registeringFace ? (
                     <>
