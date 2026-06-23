@@ -129,10 +129,10 @@ export default function Home() {
 
       detector = await FaceDetector.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
           delegate: "GPU",
         },
-        runningMode: "IMAGE",
+        runningMode: "VIDEO",
         minDetectionConfidence: 0.15,
         minSuppressionThreshold: 0.3, // Non-maximum suppression threshold to handle close/overlapping faces
       });
@@ -262,17 +262,24 @@ export default function Home() {
             // Draw the current video frame onto the processing canvas
             ctx.drawImage(video, 0, 0, width, height);
 
-            // Run the face detector on the current canvas frame (using IMAGE mode for robustness)
-            const detectionResult = detector.detect(canvas);
+            // Run the face detector on the current canvas frame (using VIDEO mode for temporal tracking)
+            const timestampMs = Math.round(video.currentTime * 1000);
+            const detectionResult = detector.detectForVideo(canvas, timestampMs);
 
             if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
               const first = detectionResult.detections[0].boundingBox;
-              setDebugText(`Detected face! x: ${Math.round(first.originX)}, y: ${Math.round(first.originY)}, w: ${Math.round(first.width)}, h: ${Math.round(first.height)}`);
+              setDebugText(`Detected ${detectionResult.detections.length} face(s)! x: ${Math.round(first.originX)}, y: ${Math.round(first.originY)}`);
             } else {
               setDebugText("No faces detected in this frame");
             }
 
-            if (detectionResult && detectionResult.detections) {
+            if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
+              // Copy the entire unblurred frame to temp canvas once
+              if (tempCtx) {
+                tempCtx.clearRect(0, 0, width, height);
+                tempCtx.drawImage(canvas, 0, 0, width, height);
+              }
+
               for (const detection of detectionResult.detections) {
                 const bbox = detection.boundingBox;
                 if (bbox) {
@@ -309,17 +316,13 @@ export default function Home() {
                   const finalSide = Math.min(wSq, hSq);
 
                   if (finalSide > 4 && tempCtx) {
-                    // Copy the square face region from the main canvas to the temp canvas (at absolute position)
-                    tempCtx.clearRect(xSq, ySq, finalSide, finalSide);
-                    tempCtx.drawImage(canvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
-
                     // Draw the temp canvas back onto the main canvas with a blur filter, clipped to a sharp square
                     ctx.save();
                     ctx.beginPath();
                     ctx.rect(xSq, ySq, finalSide, finalSide);
                     ctx.clip();
                     ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
-                    ctx.drawImage(tempCanvas, xSq, ySq, finalSide, finalSide, xSq, ySq, finalSide, finalSide);
+                    ctx.drawImage(tempCanvas, 0, 0, width, height);
                     ctx.restore();
                   }
                 }
