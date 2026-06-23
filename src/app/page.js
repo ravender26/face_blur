@@ -12,6 +12,16 @@ export default function Home() {
   const [debugText, setDebugText] = useState("");
   const [consoleLogs, setConsoleLogs] = useState([]);
 
+  const [activeMode, setActiveMode] = useState("upload"); // 'upload' | 'camera'
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isRecordingCamera, setIsRecordingCamera] = useState(false);
+  const [cameraRecordUrl, setCameraRecordUrl] = useState(null);
+
+  const webcamVideoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const cameraRecorderRef = useRef(null);
+  const cameraAnimationFrameIdRef = useRef(null);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleLog = (type, ...args) => {
@@ -46,6 +56,17 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (cameraAnimationFrameIdRef.current) {
+        cancelAnimationFrame(cameraAnimationFrameIdRef.current);
+      }
+    };
+  }, []);
+
   // Statuses: 'idle', 'loading-model', 'processing', 'encoding', 'done'
   const [status, setStatus] = useState("idle");
   const fileInputRef = useRef(null);
@@ -55,6 +76,244 @@ export default function Home() {
   const canvasRef = useRef(null);
   const activeDetectorRef = useRef(null);
   const activeRecorderRef = useRef(null);
+
+  const handleModeChange = (mode) => {
+    if (mode === activeMode) return;
+    if (activeMode === "camera") {
+      stopCamera();
+    } else if (activeMode === "upload") {
+      resetAll();
+    }
+    setActiveMode(mode);
+  };
+
+  const startCamera = async () => {
+    setLoading(true);
+    setError(null);
+    setCameraRecordUrl(null);
+    setIsRecordingCamera(false);
+
+    let detector = null;
+
+    try {
+      // 1. Initialize FaceDetector model
+      const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+      );
+
+      detector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        minDetectionConfidence: 0.15,
+        minSuppressionThreshold: 0.3,
+      });
+      activeDetectorRef.current = detector;
+
+      // 2. Access user camera
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      cameraStreamRef.current = stream;
+
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = stream;
+        await new Promise((resolve) => {
+          webcamVideoRef.current.onloadedmetadata = () => {
+            webcamVideoRef.current.play().then(resolve);
+          };
+        });
+      }
+
+      // 3. Setup canvas sizing
+      const video = webcamVideoRef.current;
+      const canvas = canvasRef.current;
+      if (!canvas || !video) {
+        throw new Error("Webcam setup error: DOM nodes not found.");
+      }
+
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext("2d");
+
+      setIsCameraActive(true);
+      setLoading(false);
+
+      // 4. Processing Loop
+      const processCameraFrame = () => {
+        if (!cameraStreamRef.current || video.paused || video.ended) return;
+
+        try {
+          ctx.drawImage(video, 0, 0, width, height);
+
+          const timestampMs = performance.now();
+          const detectionResult = detector.detectForVideo(canvas, timestampMs);
+
+          if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
+            const first = detectionResult.detections[0].boundingBox;
+            setDebugText(`Detected ${detectionResult.detections.length} face(s)!`);
+
+            if (tempCtx) {
+              tempCtx.clearRect(0, 0, width, height);
+              tempCtx.drawImage(canvas, 0, 0, width, height);
+            }
+
+            for (const detection of detectionResult.detections) {
+              const bbox = detection.boundingBox;
+              if (bbox) {
+                let x = bbox.originX;
+                let y = bbox.originY;
+                let w = bbox.width;
+                let h = bbox.height;
+
+                if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
+                  x = x * width;
+                  y = y * height;
+                  w = w * width;
+                  h = h * height;
+                }
+
+                x = Math.max(0, Math.min(x, width));
+                y = Math.max(0, Math.min(y, height));
+                w = Math.max(0, Math.min(w, width - x));
+                h = Math.max(0, Math.min(h, height - y));
+
+                const side = Math.max(w, h);
+                const centerX = x + w / 2;
+                const centerY = y + h / 2;
+
+                let xSq = Math.max(0, Math.min(centerX - side / 2, width));
+                let ySq = Math.max(0, Math.min(centerY - side / 2, height));
+                let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
+                let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
+
+                const finalSide = Math.min(wSq, hSq);
+
+                if (finalSide > 4 && tempCtx) {
+                  ctx.save();
+                  ctx.beginPath();
+                  ctx.rect(xSq, ySq, finalSide, finalSide);
+                  ctx.clip();
+                  ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
+                  ctx.drawImage(tempCanvas, 0, 0, width, height);
+                  ctx.restore();
+                }
+              }
+            }
+          } else {
+            setDebugText("No faces detected in live feed");
+          }
+
+          cameraAnimationFrameIdRef.current = requestAnimationFrame(processCameraFrame);
+        } catch (frameErr) {
+          console.error("Error in live processing frame:", frameErr);
+        }
+      };
+
+      cameraAnimationFrameIdRef.current = requestAnimationFrame(processCameraFrame);
+
+    } catch (err) {
+      console.error("Camera start failure:", err);
+      setError(err.message || "Failed to initialize webcam.");
+      setLoading(false);
+      stopCamera();
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
+      try {
+        cameraRecorderRef.current.stop();
+      } catch (_) {}
+    }
+    cameraRecorderRef.current = null;
+
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    cameraStreamRef.current = null;
+
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = null;
+    }
+
+    if (cameraAnimationFrameIdRef.current) {
+      cancelAnimationFrame(cameraAnimationFrameIdRef.current);
+    }
+    cameraAnimationFrameIdRef.current = null;
+
+    if (activeDetectorRef.current) {
+      try {
+        activeDetectorRef.current.close();
+      } catch (_) {}
+    }
+    activeDetectorRef.current = null;
+
+    setIsCameraActive(false);
+    setIsRecordingCamera(false);
+    setDebugText("");
+  };
+
+  const startCameraRecording = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    setCameraRecordUrl(null);
+    const fps = 30;
+    const stream = canvas.captureStream ? canvas.captureStream(fps) : canvas.mozCaptureStream(fps);
+
+    const mimeTypes = [
+      "video/mp4;codecs=avc1",
+      "video/mp4",
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ];
+    let selectedMimeType = "";
+    for (const mime of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mime)) {
+        selectedMimeType = mime;
+        break;
+      }
+    }
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+    cameraRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        chunks.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: selectedMimeType });
+      const localUrl = URL.createObjectURL(blob);
+      setCameraRecordUrl(localUrl);
+      setIsRecordingCamera(false);
+    };
+
+    recorder.start();
+    setIsRecordingCamera(true);
+  };
+
+  const stopCameraRecording = () => {
+    if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
+      cameraRecorderRef.current.stop();
+    }
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -445,6 +704,30 @@ export default function Home() {
           </div>
         </header>
 
+        {/* Mode Toggle Tabs */}
+        <div className="flex gap-4 mb-8 bg-[#0f131d]/60 border border-slate-800/80 p-1.5 rounded-xl w-fit">
+          <button
+            onClick={() => handleModeChange("upload")}
+            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+              activeMode === "upload"
+                ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Video File Anonymizer
+          </button>
+          <button
+            onClick={() => handleModeChange("camera")}
+            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+              activeMode === "camera"
+                ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Live Webcam Feed
+          </button>
+        </div>
+
         {/* Dashboard Panels */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
@@ -452,7 +735,9 @@ export default function Home() {
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl">
 
-              {!originalVideoUrl ? (
+              {activeMode === "upload" && (
+                <>
+                  {!originalVideoUrl ? (
                 /* Dropzone configuration */
                 <div
                   onDragEnter={handleDrag}
@@ -617,6 +902,127 @@ export default function Home() {
                   )}
                 </div>
               )}
+            </>)}
+
+              {activeMode === "camera" && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-start border-b border-slate-800/80 pb-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-300 font-mono">
+                        Live Webcam Face Blur
+                      </h3>
+                      <p className="text-xs text-slate-500 font-mono">
+                        {isCameraActive ? "Camera feed active" : "Webcam inactive"}
+                      </p>
+                    </div>
+                    {isCameraActive && (
+                      <button
+                        onClick={stopCamera}
+                        disabled={loading}
+                        className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+                      >
+                        Stop Camera
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Hidden raw webcam input stream */}
+                  <video
+                    ref={webcamVideoRef}
+                    className="hidden"
+                    playsInline
+                    muted
+                  />
+
+                  {/* Webcam preview frame */}
+                  <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+                    <canvas
+                      ref={canvasRef}
+                      className={`w-full h-full object-contain ${isCameraActive ? "block" : "hidden"}`}
+                    />
+
+                    {isRecordingCamera && isCameraActive && (
+                      <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                        Recording Live Feed...
+                      </div>
+                    )}
+
+                    {loading && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
+                        <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-3"></div>
+                        <p className="text-xs font-semibold text-violet-400">Activating Webcam & AI...</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Initializing stream and detector</p>
+                      </div>
+                    )}
+
+                    {!isCameraActive && !loading && (
+                      <div className="flex flex-col items-center justify-center p-12 text-center text-slate-500">
+                        <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800">
+                          <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-base font-semibold text-slate-200 mb-1">Camera Inactive</h3>
+                        <p className="text-xs text-slate-400 mb-6">Start your camera to see live face blurring on screen</p>
+                        <button
+                          onClick={startCamera}
+                          className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Start Camera
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Camera Controls */}
+                  {isCameraActive && (
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="flex gap-3">
+                        {!isRecordingCamera ? (
+                          <button
+                            onClick={startCameraRecording}
+                            className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-xs font-semibold rounded-lg text-white transition-all flex items-center gap-2 shadow-lg shadow-rose-500/15"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-white"></span>
+                            Start Recording
+                          </button>
+                        ) : (
+                          <button
+                            onClick={stopCameraRecording}
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-rose-400 transition-all flex items-center gap-2"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                            Stop Recording
+                          </button>
+                        )}
+                      </div>
+
+                      {cameraRecordUrl && (
+                        <a
+                          href={cameraRecordUrl}
+                          download="live-webcam-blurred.mp4"
+                          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download Recording
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {debugText && (
+                    <div className="text-xs font-mono text-violet-400 mt-2 bg-slate-900/60 p-2 rounded-md border border-slate-800/60 text-center">
+                      {debugText}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {error && (
@@ -645,18 +1051,18 @@ export default function Home() {
                 {[
                   {
                     key: "loading-model",
-                    label: "Initialize Video Blur Model",
+                    label: activeMode === "camera" ? "Initialize Camera Blur Model" : "Initialize Video Blur Model",
                     desc: "Loading WebAssembly vision runtime & BlazeFace detector",
                   },
                   {
                     key: "processing",
-                    label: "Client-Side Detection & Blur",
-                    desc: "Processing frames on canvas with hardware-accelerated filters",
+                    label: activeMode === "camera" ? "Live Feed Detection & Blur" : "Client-Side Detection & Blur",
+                    desc: activeMode === "camera" ? "Capturing webcam stream and performing frame-by-frame face anonymization" : "Processing frames on canvas with hardware-accelerated filters",
                   },
                   {
                     key: "encoding",
-                    label: "MediaRecorder Encoding",
-                    desc: "Packaging video & audio tracks into browser-native container",
+                    label: activeMode === "camera" ? "Live Feed Recording" : "MediaRecorder Encoding",
+                    desc: activeMode === "camera" ? "Optionally record the anonymized webcam session to a downloadable file" : "Packaging video & audio tracks into browser-native container",
                   },
                 ].map((step, idx) => {
                   const statusOrder = ["loading-model", "processing", "encoding", "done"];
