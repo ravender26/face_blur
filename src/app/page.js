@@ -2,6 +2,221 @@
 
 import { useState, useRef, useEffect } from "react";
 
+// Parse MediaPipe detection bounding box to a standard square format
+function parseDetection(detection, width, height) {
+  const bbox = detection.boundingBox;
+  if (!bbox) return null;
+
+  let x = bbox.originX;
+  let y = bbox.originY;
+  let w = bbox.width;
+  let h = bbox.height;
+
+  // Handle normalized coordinates
+  if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
+    x = x * width;
+    y = y * height;
+    w = w * width;
+    h = h * height;
+  }
+
+  // Secure coordinate clamping
+  x = Math.max(0, Math.min(x, width));
+  y = Math.max(0, Math.min(y, height));
+  w = Math.max(0, Math.min(w, width - x));
+  h = Math.max(0, Math.min(h, height - y));
+
+  // Calculate square bounding box centered around the face
+  const side = Math.max(w, h);
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+
+  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
+  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
+  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
+  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
+
+  const finalSide = Math.min(wSq, hSq);
+
+  if (finalSide > 4) {
+    return {
+      x: xSq,
+      y: ySq,
+      side: finalSide,
+      centerX,
+      centerY
+    };
+  }
+  return null;
+}
+
+// Helper for face recognition on a cropped frame canvas
+async function recognizeFace(cropCanvas, targetDescriptor) {
+  try {
+    // Lower threshold from 0.35 to 0.22 since MediaPipe has already confirmed a face is here
+    const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.22 }))
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (faceapiResult) {
+      const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
+      console.log("Face distance to target:", dist);
+      // Relax threshold from 0.55 to 0.60 to match standard face matcher settings and reduce false negatives
+      if (dist < 0.60) {
+        return true;
+      }
+    }
+  } catch (faceErr) {
+    console.error("Face recognition error:", faceErr);
+  }
+  return false;
+}
+
+// Face Tracking implementation using center distance
+function updateTracks(currentDetections, faceTracks, excludeTarget, targetDescriptor, tempCanvas, width, height, trackIdCounterRef) {
+  const matchedIndices = new Set();
+  const updatedTracks = [];
+
+  for (const det of currentDetections) {
+    let bestTrackIdx = -1;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < faceTracks.length; i++) {
+      const track = faceTracks[i];
+      const dist = Math.sqrt((det.centerX - track.centerX) ** 2 + (det.centerY - track.centerY) ** 2);
+      // Distance threshold: allow movement up to 1.2 * track.side
+      const threshold = track.side * 1.2;
+      if (dist < threshold && dist < minDistance) {
+        minDistance = dist;
+        bestTrackIdx = i;
+      }
+    }
+
+    if (bestTrackIdx !== -1) {
+      // Matched existing track
+      const track = faceTracks[bestTrackIdx];
+      matchedIndices.add(bestTrackIdx);
+      updatedTracks.push({
+        ...track,
+        x: det.x,
+        y: det.y,
+        side: det.side,
+        centerX: det.centerX,
+        centerY: det.centerY,
+        missedFrames: 0,
+        detMatches: (track.detMatches || 0) + 1
+      });
+    } else {
+      // Create new track
+      const newTrackId = trackIdCounterRef.current++;
+      updatedTracks.push({
+        id: newTrackId,
+        x: det.x,
+        y: det.y,
+        side: det.side,
+        centerX: det.centerX,
+        centerY: det.centerY,
+        history: [], // Will be populated in recognition step
+        isTarget: false,
+        missedFrames: 0,
+        detMatches: 1,
+        recognizing: false
+      });
+    }
+  }
+
+  // Carry over missed tracks up to 15 frames
+  for (let i = 0; i < faceTracks.length; i++) {
+    if (!matchedIndices.has(i)) {
+      const track = faceTracks[i];
+      if (track.missedFrames < 15) {
+        updatedTracks.push({
+          ...track,
+          missedFrames: track.missedFrames + 1
+        });
+      }
+    }
+  }
+
+  return updatedTracks;
+}
+
+// Asynchronously process recognition for tracks in the background (no await)
+function processRecognitionForTracks(tracks, excludeTarget, targetDescriptor, tempCanvas, width, height) {
+  if (!excludeTarget || !targetDescriptor || !window.faceapi) return;
+
+  for (const track of tracks) {
+    if (track.missedFrames > 0) continue; // Skip missed tracks
+    if (track.recognizing) continue; // Skip if already running recognition for this track
+
+    const pad = Math.round(track.side * 0.5);
+    const xCrop = Math.max(0, track.x - pad);
+    const yCrop = Math.max(0, track.y - pad);
+    const wCrop = Math.min(width - xCrop, track.side + pad * 2);
+    const hCrop = Math.min(height - yCrop, track.side + pad * 2);
+
+    if (wCrop < 10 || hCrop < 10) continue;
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = wCrop;
+    cropCanvas.height = hCrop;
+    const cropCtx = cropCanvas.getContext("2d");
+    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
+
+    track.recognizing = true;
+
+    recognizeFace(cropCanvas, targetDescriptor)
+      .then((matchedThisFrame) => {
+        track.history.push(matchedThisFrame);
+        if (track.history.length > 15) {
+          track.history.shift();
+        }
+        const matchesCount = track.history.filter(Boolean).length;
+        track.isTarget = (matchesCount / track.history.length) >= 0.3;
+        track.recognizing = false;
+        console.log(`[Face Tracking] Track ID ${track.id} resolved: matched=${matchedThisFrame}, matchesCount=${matchesCount}, length=${track.history.length}, isTarget=${track.isTarget}`);
+      })
+      .catch((err) => {
+        console.error("Async recognition error for track:", track.id, err);
+        track.recognizing = false;
+      });
+  }
+}
+
+// Awaited recognition process for video files (fully blocking frame-by-frame)
+async function processRecognitionForTracksAwaited(tracks, excludeTarget, targetDescriptor, tempCanvas, width, height) {
+  if (!excludeTarget || !targetDescriptor || !window.faceapi) return;
+
+  for (const track of tracks) {
+    if (track.missedFrames > 0) continue; // Skip missed tracks
+
+    const pad = Math.round(track.side * 0.5);
+    const xCrop = Math.max(0, track.x - pad);
+    const yCrop = Math.max(0, track.y - pad);
+    const wCrop = Math.min(width - xCrop, track.side + pad * 2);
+    const hCrop = Math.min(height - yCrop, track.side + pad * 2);
+
+    if (wCrop < 10 || hCrop < 10) continue;
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = wCrop;
+    cropCanvas.height = hCrop;
+    const cropCtx = cropCanvas.getContext("2d");
+    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
+
+    let matchedThisFrame = await recognizeFace(cropCanvas, targetDescriptor);
+
+    track.history.push(matchedThisFrame);
+    if (track.history.length > 15) {
+      track.history.shift();
+    }
+
+    const matchesCount = track.history.filter(Boolean).length;
+    track.isTarget = (matchesCount / track.history.length) >= 0.3;
+    console.log(`[Face Tracking Awaited] Track ID ${track.id}: matched=${matchedThisFrame}, matchesCount=${matchesCount}, length=${track.history.length}, isTarget=${track.isTarget}`);
+  }
+}
+
 export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
@@ -194,7 +409,7 @@ export default function Home() {
         video.pause();
         video.src = "";
         video.load();
-      } catch (_) {}
+      } catch (_) { }
 
       if (descriptors.length === 0) {
         throw new Error("Could not detect any faces in the uploaded selfies or video frames. Please ensure your face is clearly visible.");
@@ -313,100 +528,90 @@ export default function Home() {
       setLoading(false);
 
       // 4. Processing Loop
+      let faceTracks = [];
+      const trackIdCounterRef = { current: 0 };
+
       const processCameraFrame = async () => {
         if (!cameraStreamRef.current || video.paused || video.ended) return;
 
         try {
-          ctx.drawImage(video, 0, 0, width, height);
-
           const timestampMs = performance.now();
-          const detectionResult = detector.detectForVideo(canvas, timestampMs);
+
+          // Draw the current video frame to the offscreen tempCanvas first
+          if (tempCtx) {
+            tempCtx.clearRect(0, 0, width, height);
+            tempCtx.drawImage(video, 0, 0, width, height);
+          }
+
+          // Detect faces on the unblurred offscreen frame
+          const detectionResult = detector.detectForVideo(tempCanvas, timestampMs);
 
           if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
-            const first = detectionResult.detections[0].boundingBox;
             setDebugText(`Detected ${detectionResult.detections.length} face(s)!`);
 
-            if (tempCtx) {
-              tempCtx.clearRect(0, 0, width, height);
-              tempCtx.drawImage(canvas, 0, 0, width, height);
+            // Parse current frame detections
+            const currentDetections = [];
+            for (const detection of detectionResult.detections) {
+              const parsed = parseDetection(detection, width, height);
+              if (parsed) {
+                currentDetections.push(parsed);
+              }
             }
 
-            for (const detection of detectionResult.detections) {
-              const bbox = detection.boundingBox;
-              if (bbox) {
-                let x = bbox.originX;
-                let y = bbox.originY;
-                let w = bbox.width;
-                let h = bbox.height;
+            // Update tracks with matching and history check
+            faceTracks = updateTracks(
+              currentDetections,
+              faceTracks,
+              excludeTarget,
+              targetDescriptor,
+              tempCanvas,
+              width,
+              height,
+              trackIdCounterRef
+            );
 
-                if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
-                  x = x * width;
-                  y = y * height;
-                  w = w * width;
-                  h = h * height;
-                }
+            // Run recognition in the background (no await) to maintain 60fps
+            processRecognitionForTracks(
+              faceTracks,
+              excludeTarget,
+              targetDescriptor,
+              tempCanvas,
+              width,
+              height
+            );
 
-                x = Math.max(0, Math.min(x, width));
-                y = Math.max(0, Math.min(y, height));
-                w = Math.max(0, Math.min(w, width - x));
-                h = Math.max(0, Math.min(h, height - y));
+            // Draw blur for non-target faces on tempCanvas
+            for (const det of currentDetections) {
+              // Find track corresponding to this detection
+              const track = faceTracks.find(
+                t => t.missedFrames === 0 && Math.abs(t.centerX - det.centerX) < 2 && Math.abs(t.centerY - det.centerY) < 2
+              );
+              const isTargetFace = track ? track.isTarget : false;
 
-                const side = Math.max(w, h);
-                const centerX = x + w / 2;
-                const centerY = y + h / 2;
+              if (!isTargetFace && det.side > 4 && tempCtx) {
+                // Crop the face area to a small temp canvas
+                const faceCanvas = document.createElement("canvas");
+                faceCanvas.width = det.side;
+                faceCanvas.height = det.side;
+                const faceCtx = faceCanvas.getContext("2d");
+                faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
 
-                let xSq = Math.max(0, Math.min(centerX - side / 2, width));
-                let ySq = Math.max(0, Math.min(centerY - side / 2, height));
-                let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
-                let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
-
-                const finalSide = Math.min(wSq, hSq);
-
-                let isTargetFace = false;
-                if (excludeTarget && targetDescriptor && window.faceapi) {
-                  try {
-                    const pad = Math.round(finalSide * 0.2);
-                    const xCrop = Math.max(0, xSq - pad);
-                    const yCrop = Math.max(0, ySq - pad);
-                    const wCrop = Math.min(width - xCrop, finalSide + pad * 2);
-                    const hCrop = Math.min(height - yCrop, finalSide + pad * 2);
-
-                    const cropCanvas = document.createElement("canvas");
-                    cropCanvas.width = wCrop;
-                    cropCanvas.height = hCrop;
-                    const cropCtx = cropCanvas.getContext("2d");
-                    cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
-
-                    const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.35 }))
-                      .withFaceLandmarks()
-                      .withFaceDescriptor();
-
-                    if (faceapiResult) {
-                      const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
-                      console.log("Webcam face distance to target:", dist);
-                      if (dist < 0.55) {
-                        isTargetFace = true;
-                      }
-                    }
-                  } catch (faceErr) {
-                    console.error("Webcam face recognition error:", faceErr);
-                  }
-                }
-
-                if (!isTargetFace && finalSide > 4 && tempCtx) {
-                  ctx.save();
-                  ctx.beginPath();
-                  ctx.rect(xSq, ySq, finalSide, finalSide);
-                  ctx.clip();
-                  ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
-                  ctx.drawImage(tempCanvas, 0, 0, width, height);
-                  ctx.restore();
-                }
+                // Draw blurred face back to tempCanvas
+                tempCtx.save();
+                tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
+                tempCtx.drawImage(faceCanvas, det.x, det.y);
+                tempCtx.restore();
               }
             }
           } else {
             setDebugText("No faces detected in live feed");
+            // Increment missed frames for all existing tracks
+            faceTracks.forEach(t => t.missedFrames++);
+            faceTracks = faceTracks.filter(t => t.missedFrames < 15);
           }
+
+          // Single synchronous draw of the fully processed offscreen canvas to the visible canvas
+          ctx.drawImage(tempCanvas, 0, 0, width, height);
 
           cameraAnimationFrameIdRef.current = requestAnimationFrame(processCameraFrame);
         } catch (frameErr) {
@@ -434,7 +639,7 @@ export default function Home() {
     if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
       try {
         cameraRecorderRef.current.stop();
-      } catch (_) {}
+      } catch (_) { }
     }
     cameraRecorderRef.current = null;
 
@@ -455,7 +660,7 @@ export default function Home() {
     if (activeDetectorRef.current) {
       try {
         activeDetectorRef.current.close();
-      } catch (_) {}
+      } catch (_) { }
     }
     activeDetectorRef.current = null;
 
@@ -704,6 +909,9 @@ export default function Home() {
       tempCanvas.height = height;
       const tempCtx = tempCanvas.getContext("2d");
 
+      let faceTracks = [];
+      const trackIdCounterRef = { current: 0 };
+
       const processFrame = async () => {
         try {
           if (video.paused || video.ended) {
@@ -717,12 +925,15 @@ export default function Home() {
           if (video.currentTime !== lastTime) {
             lastTime = video.currentTime;
 
-            // Draw the current video frame onto the processing canvas
-            ctx.drawImage(video, 0, 0, width, height);
+            // Draw the current video frame to the offscreen tempCanvas first
+            if (tempCtx) {
+              tempCtx.clearRect(0, 0, width, height);
+              tempCtx.drawImage(video, 0, 0, width, height);
+            }
 
-            // Run the face detector on the current canvas frame (using VIDEO mode for temporal tracking)
+            // Detect faces on the unblurred offscreen frame
             const timestampMs = Math.round(video.currentTime * 1000);
-            const detectionResult = detector.detectForVideo(canvas, timestampMs);
+            const detectionResult = detector.detectForVideo(tempCanvas, timestampMs);
 
             if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
               const first = detectionResult.detections[0].boundingBox;
@@ -732,91 +943,68 @@ export default function Home() {
             }
 
             if (detectionResult && detectionResult.detections && detectionResult.detections.length > 0) {
-              // Copy the entire unblurred frame to temp canvas once
-              if (tempCtx) {
-                tempCtx.clearRect(0, 0, width, height);
-                tempCtx.drawImage(canvas, 0, 0, width, height);
-              }
-
+              // Parse current frame detections
+              const currentDetections = [];
               for (const detection of detectionResult.detections) {
-                const bbox = detection.boundingBox;
-                if (bbox) {
-                  let x = bbox.originX;
-                  let y = bbox.originY;
-                  let w = bbox.width;
-                  let h = bbox.height;
-
-                  // Handle normalized coordinates (some MediaPipe versions return 0.0 to 1.0)
-                  if (Math.abs(x) <= 1.0 && Math.abs(w) <= 1.0) {
-                    x = x * width;
-                    y = y * height;
-                    w = w * width;
-                    h = h * height;
-                  }
-
-                  // Secure coordinate clamping
-                  x = Math.max(0, Math.min(x, width));
-                  y = Math.max(0, Math.min(y, height));
-                  w = Math.max(0, Math.min(w, width - x));
-                  h = Math.max(0, Math.min(h, height - y));
-
-                  // Calculate square bounding box centered around the face
-                  const side = Math.max(w, h);
-                  const centerX = x + w / 2;
-                  const centerY = y + h / 2;
-
-                  let xSq = Math.max(0, Math.min(centerX - side / 2, width));
-                  let ySq = Math.max(0, Math.min(centerY - side / 2, height));
-                  let wSq = Math.max(0, Math.min(centerX + side / 2, width) - xSq);
-                  let hSq = Math.max(0, Math.min(centerY + side / 2, height) - ySq);
-
-                  // Keep it as a square
-                  const finalSide = Math.min(wSq, hSq);
-
-                  let isTargetFace = false;
-                  if (excludeTarget && targetDescriptor && window.faceapi) {
-                    try {
-                      const pad = Math.round(finalSide * 0.2);
-                      const xCrop = Math.max(0, xSq - pad);
-                      const yCrop = Math.max(0, ySq - pad);
-                      const wCrop = Math.min(width - xCrop, finalSide + pad * 2);
-                      const hCrop = Math.min(height - yCrop, finalSide + pad * 2);
-
-                      const cropCanvas = document.createElement("canvas");
-                      cropCanvas.width = wCrop;
-                      cropCanvas.height = hCrop;
-                      const cropCtx = cropCanvas.getContext("2d");
-                      cropCtx.drawImage(tempCanvas, xCrop, yCrop, wCrop, hCrop, 0, 0, wCrop, hCrop);
-
-                      const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.35 }))
-                        .withFaceLandmarks()
-                        .withFaceDescriptor();
-
-                      if (faceapiResult) {
-                        const dist = window.faceapi.euclideanDistance(faceapiResult.descriptor, targetDescriptor);
-                        console.log("Video face distance to target:", dist);
-                        if (dist < 0.55) {
-                          isTargetFace = true;
-                        }
-                      }
-                    } catch (faceErr) {
-                      console.error("Video face recognition error:", faceErr);
-                    }
-                  }
-
-                  if (!isTargetFace && finalSide > 4 && tempCtx) {
-                    // Draw the temp canvas back onto the main canvas with a blur filter, clipped to a sharp square
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.rect(xSq, ySq, finalSide, finalSide);
-                    ctx.clip();
-                    ctx.filter = `blur(${Math.max(12, finalSide / 4.5)}px)`;
-                    ctx.drawImage(tempCanvas, 0, 0, width, height);
-                    ctx.restore();
-                  }
+                const parsed = parseDetection(detection, width, height);
+                if (parsed) {
+                  currentDetections.push(parsed);
                 }
               }
+
+              // Update tracks with matching and history check
+              faceTracks = updateTracks(
+                currentDetections,
+                faceTracks,
+                excludeTarget,
+                targetDescriptor,
+                tempCanvas,
+                width,
+                height,
+                trackIdCounterRef
+              );
+
+              // Await recognition for perfect frame-by-frame accuracy in video file export
+              await processRecognitionForTracksAwaited(
+                faceTracks,
+                excludeTarget,
+                targetDescriptor,
+                tempCanvas,
+                width,
+                height
+              );
+
+              // Draw blur for non-target faces on tempCanvas
+              for (const det of currentDetections) {
+                // Find track corresponding to this detection
+                const track = faceTracks.find(
+                  t => t.missedFrames === 0 && Math.abs(t.centerX - det.centerX) < 2 && Math.abs(t.centerY - det.centerY) < 2
+                );
+                const isTargetFace = track ? track.isTarget : false;
+
+                if (!isTargetFace && det.side > 4 && tempCtx) {
+                  // Crop the face area to a small temp canvas
+                  const faceCanvas = document.createElement("canvas");
+                  faceCanvas.width = det.side;
+                  faceCanvas.height = det.side;
+                  const faceCtx = faceCanvas.getContext("2d");
+                  faceCtx.drawImage(tempCanvas, det.x, det.y, det.side, det.side, 0, 0, det.side, det.side);
+
+                  // Draw blurred face back to tempCanvas
+                  tempCtx.save();
+                  tempCtx.filter = `blur(${Math.max(12, det.side / 4.5)}px)`;
+                  tempCtx.drawImage(faceCanvas, det.x, det.y);
+                  tempCtx.restore();
+                }
+              }
+            } else {
+              // Increment missed frames for all existing tracks
+              faceTracks.forEach(t => t.missedFrames++);
+              faceTracks = faceTracks.filter(t => t.missedFrames < 15);
             }
+
+            // Single synchronous draw of the fully processed offscreen canvas to the visible canvas
+            ctx.drawImage(tempCanvas, 0, 0, width, height);
           }
 
           animationFrameId = requestAnimationFrame(processFrame);
@@ -938,15 +1126,14 @@ export default function Home() {
         <div className="flex gap-4 mb-8 bg-[#0f131d]/60 border border-slate-800/80 p-1.5 rounded-xl w-fit">
           <button
             onClick={() => handleModeChange("upload")}
-            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-              activeMode === "upload"
+            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${activeMode === "upload"
                 ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
                 : "text-slate-400 hover:text-slate-200"
-            }`}
+              }`}
           >
             Video File Anonymizer
           </button>
-          <button
+          {/* <button
             onClick={() => handleModeChange("camera")}
             className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
               activeMode === "camera"
@@ -955,7 +1142,7 @@ export default function Home() {
             }`}
           >
             Live Webcam Feed
-          </button>
+          </button> */}
         </div>
 
         {/* Dashboard Panels */}
@@ -968,171 +1155,171 @@ export default function Home() {
               {activeMode === "upload" && (
                 <>
                   {!originalVideoUrl ? (
-                /* Dropzone configuration */
-                <div
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  onClick={triggerFileInput}
-                  className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${dragActive
-                    ? "border-violet-500 bg-violet-600/5 shadow-inner"
-                    : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
-                    }`}
-                >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="video/mp4, video/quicktime, video/mov"
-                    className="hidden"
-                  />
-
-                  <div className="flex flex-col items-center">
-                    <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform duration-300">
-                      <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                    </div>
-                    <h3 className="text-base font-semibold text-slate-200 mb-1">
-                      Drag & drop your video here
-                    </h3>
-                    <p className="text-xs text-slate-400 mb-4">
-                      or click to browse your files
-                    </p>
-                    <span className="inline-block px-3 py-1 bg-slate-900 border border-slate-800/80 rounded-md text-[10px] text-slate-500 font-mono">
-                      MP4, MOV (max 100MB)
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                /* Selected video actions */
-                <div className="space-y-6">
-                  <div className="flex justify-between items-start border-b border-slate-800/80 pb-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-300 font-mono truncate max-w-[250px] sm:max-w-md">
-                        {file?.name}
-                      </h3>
-                      <p className="text-xs text-slate-500 font-mono">
-                        {(file?.size / (1024 * 1024)).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <button
-                      onClick={resetAll}
-                      disabled={loading}
-                      className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+                    /* Dropzone configuration */
+                    <div
+                      onDragEnter={handleDrag}
+                      onDragOver={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDrop={handleDrop}
+                      onClick={triggerFileInput}
+                      className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${dragActive
+                        ? "border-violet-500 bg-violet-600/5 shadow-inner"
+                        : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
+                        }`}
                     >
-                      Remove
-                    </button>
-                  </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="video/mp4, video/quicktime, video/mov"
+                        className="hidden"
+                      />
 
-                  {/* Video previews */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Source file preview */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
-                        Original Video
-                      </label>
-                      <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
-                        <video
-                          ref={sourceVideoRef}
-                          src={originalVideoUrl}
-                          className="w-full h-full object-contain"
-                          controls={status === "idle" || status === "done"}
-                        />
+                      <div className="flex flex-col items-center">
+                        <div className="mb-4 p-4 rounded-full bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform duration-300">
+                          <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <h3 className="text-base font-semibold text-slate-200 mb-1">
+                          Drag & drop your video here
+                        </h3>
+                        <p className="text-xs text-slate-400 mb-4">
+                          or click to browse your files
+                        </p>
+                        <span className="inline-block px-3 py-1 bg-slate-900 border border-slate-800/80 rounded-md text-[10px] text-slate-500 font-mono">
+                          MP4, MOV (max 100MB)
+                        </span>
                       </div>
                     </div>
+                  ) : (
+                    /* Selected video actions */
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-start border-b border-slate-800/80 pb-4">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-300 font-mono truncate max-w-[250px] sm:max-w-md">
+                            {file?.name}
+                          </h3>
+                          <p className="text-xs text-slate-500 font-mono">
+                            {(file?.size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <button
+                          onClick={resetAll}
+                          disabled={loading}
+                          className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+                        >
+                          Remove
+                        </button>
+                      </div>
 
-                    {/* Processed/Blurred video container */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
-                        Blurred Video Output
-                      </label>
-                      <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
-                        {blurredVideoUrl ? (
-                          <video
-                            src={blurredVideoUrl}
-                            className="w-full h-full object-contain"
-                            controls
-                            autoPlay
-                          />
-                        ) : (status === "loading-model" || status === "processing" || status === "encoding") ? (
-                          <div className="relative w-full h-full flex items-center justify-center">
-                            <canvas
-                              ref={canvasRef}
+                      {/* Video previews */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Source file preview */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+                            Original Video
+                          </label>
+                          <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+                            <video
+                              ref={sourceVideoRef}
+                              src={originalVideoUrl}
                               className="w-full h-full object-contain"
+                              controls={status === "idle" || status === "done"}
                             />
-                            {status === "loading-model" && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
-                                <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-3"></div>
-                                <p className="text-xs font-semibold text-violet-400">Loading Face Detection AI...</p>
-                                <p className="text-[10px] text-slate-500 mt-1">Initializing WebAssembly runtime and models</p>
+                          </div>
+                        </div>
+
+                        {/* Processed/Blurred video container */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+                            Blurred Video Output
+                          </label>
+                          <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+                            {blurredVideoUrl ? (
+                              <video
+                                src={blurredVideoUrl}
+                                className="w-full h-full object-contain"
+                                controls
+                                autoPlay
+                              />
+                            ) : (status === "loading-model" || status === "processing" || status === "encoding") ? (
+                              <div className="relative w-full h-full flex items-center justify-center">
+                                <canvas
+                                  ref={canvasRef}
+                                  className="w-full h-full object-contain"
+                                />
+                                {status === "loading-model" && (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
+                                    <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-3"></div>
+                                    <p className="text-xs font-semibold text-violet-400">Loading Face Detection AI...</p>
+                                    <p className="text-[10px] text-slate-500 mt-1">Initializing WebAssembly runtime and models</p>
+                                  </div>
+                                )}
+                                {status === "encoding" && (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
+                                    <div className="w-10 h-10 border-4 border-fuchsia-500/20 border-t-fuchsia-500 rounded-full animate-spin mb-3"></div>
+                                    <p className="text-xs font-semibold text-fuchsia-400">Encoding Output Video...</p>
+                                    <p className="text-[10px] text-slate-500 mt-1">Packaging tracks into video container</p>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                            {status === "encoding" && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm z-10 text-center p-4">
-                                <div className="w-10 h-10 border-4 border-fuchsia-500/20 border-t-fuchsia-500 rounded-full animate-spin mb-3"></div>
-                                <p className="text-xs font-semibold text-fuchsia-400">Encoding Output Video...</p>
-                                <p className="text-[10px] text-slate-500 mt-1">Packaging tracks into video container</p>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500">
+                                <svg className="w-8 h-8 text-slate-700 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                                <p className="text-xs">Click &quot;Process Video&quot; to apply blurring effect</p>
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500">
-                            <svg className="w-8 h-8 text-slate-700 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                            </svg>
-                            <p className="text-xs">Click &quot;Process Video&quot; to apply blurring effect</p>
-                          </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Actions buttons */}
-                  {!blurredVideoUrl && !loading && (
-                    <div className="flex justify-end pt-2">
-                      <button
-                        onClick={handleSubmit}
-                        className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Process Video
-                      </button>
+                      {/* Actions buttons */}
+                      {!blurredVideoUrl && !loading && (
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={handleSubmit}
+                            className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Process Video
+                          </button>
+                        </div>
+                      )}
+
+                      {blurredVideoUrl && (
+                        <div className="flex justify-between items-center pt-2">
+                          <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Face Blurring Complete!
+                          </span>
+                          <a
+                            href={blurredVideoUrl}
+                            download={`blurred-${file?.name || "video.mp4"}`}
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download Blurred Video
+                          </a>
+                        </div>
+                      )}
+
+                      {debugText && (
+                        <div className="text-xs font-mono text-violet-400 mt-2 bg-slate-900/60 p-2 rounded-md border border-slate-800/60 text-center">
+                          {debugText}
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  {blurredVideoUrl && (
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Face Blurring Complete!
-                      </span>
-                      <a
-                        href={blurredVideoUrl}
-                        download={`blurred-${file?.name || "video.mp4"}`}
-                        className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download Blurred Video
-                      </a>
-                    </div>
-                  )}
-
-                  {debugText && (
-                    <div className="text-xs font-mono text-violet-400 mt-2 bg-slate-900/60 p-2 rounded-md border border-slate-800/60 text-center">
-                      {debugText}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>)}
+                </>)}
 
               {activeMode === "camera" && (
                 <div className="space-y-6">
@@ -1345,13 +1532,12 @@ export default function Home() {
                 <button
                   onClick={registerTargetProfile}
                   disabled={registeringFace || selfieFiles.length < 4 || !sampleVideoFile}
-                  className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${
-                    registeringFace
+                  className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${registeringFace
                       ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                       : selfieFiles.length >= 4 && sampleVideoFile
-                      ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
-                      : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
-                  }`}
+                        ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
+                        : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
+                    }`}
                 >
                   {registeringFace ? (
                     <>
