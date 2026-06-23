@@ -102,24 +102,7 @@ export default function Home() {
     let detector = null;
 
     try {
-      // 1. Initialize FaceDetector model
-      const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
-      );
-
-      detector = await FaceDetector.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
-          delegate: "GPU",
-        },
-        runningMode: "VIDEO",
-        minDetectionConfidence: 0.15,
-        minSuppressionThreshold: 0.3,
-      });
-      activeDetectorRef.current = detector;
-
-      // 2. Access user camera with progressive fallbacks (handles mobile user-facing cameras and resolution compatibility)
+      // 1. Access user camera with progressive fallbacks (MUST be first to preserve user gesture context for iOS Safari permission prompt!)
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -155,6 +138,25 @@ export default function Home() {
           };
         });
       }
+
+      // 2. Initialize FaceDetector model
+      const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+      );
+
+      detector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        minDetectionConfidence: 0.15,
+        minSuppressionThreshold: 0.3,
+      });
+      activeDetectorRef.current = detector;
+
+
 
       // 3. Setup canvas sizing
       const video = webcamVideoRef.current;
