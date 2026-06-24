@@ -53,8 +53,12 @@ function parseDetection(detection, width, height) {
 // Helper for face recognition on a cropped frame canvas
 async function recognizeFace(cropCanvas, targetDescriptor) {
   try {
-    // Lower threshold from 0.35 to 0.22 since MediaPipe has already confirmed a face is here
-    const faceapiResult = await window.faceapi.detectSingleFace(cropCanvas, new window.faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.22 }))
+    // Lower threshold to 0.1 and set inputSize to 160 since MediaPipe has already confirmed a face is here,
+    // and cropped images are small, so smaller inputSize works much better.
+    const faceapiResult = await window.faceapi.detectSingleFace(
+      cropCanvas,
+      new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.1 })
+    )
       .withFaceLandmarks()
       .withFaceDescriptor();
 
@@ -82,6 +86,7 @@ function updateTracks(currentDetections, faceTracks, excludeTarget, targetDescri
     let minDistance = Infinity;
 
     for (let i = 0; i < faceTracks.length; i++) {
+      if (matchedIndices.has(i)) continue; // Ensure one-to-one matching per frame
       const track = faceTracks[i];
       const dist = Math.sqrt((det.centerX - track.centerX) ** 2 + (det.centerY - track.centerY) ** 2);
       // Distance threshold: allow movement up to 1.2 * track.side
@@ -93,19 +98,17 @@ function updateTracks(currentDetections, faceTracks, excludeTarget, targetDescri
     }
 
     if (bestTrackIdx !== -1) {
-      // Matched existing track
+      // Matched existing track: mutate in-place so reference is kept for async recognition updates
       const track = faceTracks[bestTrackIdx];
       matchedIndices.add(bestTrackIdx);
-      updatedTracks.push({
-        ...track,
-        x: det.x,
-        y: det.y,
-        side: det.side,
-        centerX: det.centerX,
-        centerY: det.centerY,
-        missedFrames: 0,
-        detMatches: (track.detMatches || 0) + 1
-      });
+      track.x = det.x;
+      track.y = det.y;
+      track.side = det.side;
+      track.centerX = det.centerX;
+      track.centerY = det.centerY;
+      track.missedFrames = 0;
+      track.detMatches = (track.detMatches || 0) + 1;
+      updatedTracks.push(track);
     } else {
       // Create new track
       const newTrackId = trackIdCounterRef.current++;
@@ -130,10 +133,8 @@ function updateTracks(currentDetections, faceTracks, excludeTarget, targetDescri
     if (!matchedIndices.has(i)) {
       const track = faceTracks[i];
       if (track.missedFrames < 15) {
-        updatedTracks.push({
-          ...track,
-          missedFrames: track.missedFrames + 1
-        });
+        track.missedFrames += 1;
+        updatedTracks.push(track);
       }
     }
   }
@@ -238,6 +239,17 @@ export default function Home() {
   const [sampleVideoFile, setSampleVideoFile] = useState(null);
   const [registeringFace, setRegisteringFace] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(null);
+
+  const excludeTargetRef = useRef(excludeTarget);
+  const targetDescriptorRef = useRef(targetDescriptor);
+
+  useEffect(() => {
+    excludeTargetRef.current = excludeTarget;
+  }, [excludeTarget]);
+
+  useEffect(() => {
+    targetDescriptorRef.current = targetDescriptor;
+  }, [targetDescriptor]);
 
   const webcamVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
@@ -479,11 +491,24 @@ export default function Home() {
       cameraStreamRef.current = stream;
 
       if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = stream;
+        const video = webcamVideoRef.current;
         await new Promise((resolve) => {
-          webcamVideoRef.current.onloadedmetadata = () => {
-            webcamVideoRef.current.play().then(resolve);
+          const handleMetadata = () => {
+            video.play()
+              .then(resolve)
+              .catch((err) => {
+                console.warn("Video play promise rejected:", err);
+                resolve(); // Resolve anyway to avoid getting stuck
+              });
           };
+
+          if (video.readyState >= 1) {
+            handleMetadata();
+          } else {
+            video.onloadedmetadata = handleMetadata;
+          }
+
+          video.srcObject = stream;
         });
       }
 
@@ -562,8 +587,8 @@ export default function Home() {
             faceTracks = updateTracks(
               currentDetections,
               faceTracks,
-              excludeTarget,
-              targetDescriptor,
+              excludeTargetRef.current,
+              targetDescriptorRef.current,
               tempCanvas,
               width,
               height,
@@ -573,8 +598,8 @@ export default function Home() {
             // Run recognition in the background (no await) to maintain 60fps
             processRecognitionForTracks(
               faceTracks,
-              excludeTarget,
-              targetDescriptor,
+              excludeTargetRef.current,
+              targetDescriptorRef.current,
               tempCanvas,
               width,
               height
@@ -591,7 +616,7 @@ export default function Home() {
               if (!isTargetFace && det.side > 4 && tempCtx) {
                 const blurRadius = Math.max(12, det.side / 4.5);
                 const pad = Math.round(blurRadius * 1.5);
-                
+
                 // Calculate padded cropping boundaries clamped to video frame size
                 const cropX = Math.max(0, det.x - pad);
                 const cropY = Math.max(0, det.y - pad);
@@ -976,8 +1001,8 @@ export default function Home() {
               faceTracks = updateTracks(
                 currentDetections,
                 faceTracks,
-                excludeTarget,
-                targetDescriptor,
+                excludeTargetRef.current,
+                targetDescriptorRef.current,
                 tempCanvas,
                 width,
                 height,
@@ -987,8 +1012,8 @@ export default function Home() {
               // Await recognition for perfect frame-by-frame accuracy in video file export
               await processRecognitionForTracksAwaited(
                 faceTracks,
-                excludeTarget,
-                targetDescriptor,
+                excludeTargetRef.current,
+                targetDescriptorRef.current,
                 tempCanvas,
                 width,
                 height
@@ -1005,7 +1030,7 @@ export default function Home() {
                 if (!isTargetFace && det.side > 4 && tempCtx) {
                   const blurRadius = Math.max(12, det.side / 4.5);
                   const pad = Math.round(blurRadius * 1.5);
-                  
+
                   // Calculate padded cropping boundaries clamped to video frame size
                   const cropX = Math.max(0, det.x - pad);
                   const cropY = Math.max(0, det.y - pad);
@@ -1167,22 +1192,21 @@ export default function Home() {
           <button
             onClick={() => handleModeChange("upload")}
             className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${activeMode === "upload"
-                ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
-                : "text-slate-400 hover:text-slate-200"
+              ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
+              : "text-slate-400 hover:text-slate-200"
               }`}
           >
             Video File Anonymizer
           </button>
-          {/* <button
+          <button
             onClick={() => handleModeChange("camera")}
-            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-              activeMode === "camera"
+            className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${activeMode === "camera"
                 ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
                 : "text-slate-400 hover:text-slate-200"
-            }`}
+              }`}
           >
             Live Webcam Feed
-          </button> */}
+          </button>
         </div>
 
         {/* Dashboard Panels */}
@@ -1573,10 +1597,10 @@ export default function Home() {
                   onClick={registerTargetProfile}
                   disabled={registeringFace || selfieFiles.length < 4 || !sampleVideoFile}
                   className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${registeringFace
-                      ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                      : selfieFiles.length >= 4 && sampleVideoFile
-                        ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
-                        : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : selfieFiles.length >= 4 && sampleVideoFile
+                      ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
+                      : "bg-slate-900 border border-slate-800/85 text-slate-500 cursor-not-allowed"
                     }`}
                 >
                   {registeringFace ? (
