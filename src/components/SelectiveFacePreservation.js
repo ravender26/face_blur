@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /**
  * SelectiveFacePreservation component.
@@ -13,6 +13,9 @@ import { useState } from "react";
  * @param {Float32Array|null} props.targetDescriptor - The 128-dimensional target face descriptor representation.
  * @param {function(Float32Array|null): void} props.setTargetDescriptor - Callback to update the target face descriptor state.
  * @param {function(string|null): void} props.setError - Callback to bubble up error alerts.
+ * @param {boolean} props.registeringFace - Lifted state indicating if face registration is active.
+ * @param {function(boolean): void} props.setRegisteringFace - Callback to update face registration state.
+ * @param {boolean} props.processing - Indicates if video/camera anonymizer is currently active.
  * @returns {React.ReactElement} The rendered registration and settings control panel.
  */
 export default function SelectiveFacePreservation({
@@ -20,12 +23,34 @@ export default function SelectiveFacePreservation({
   setExcludeTarget,
   targetDescriptor,
   setTargetDescriptor,
-  setError
+  setError,
+  registeringFace,
+  setRegisteringFace,
+  processing
 }) {
   const [selfieFiles, setSelfieFiles] = useState([]);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [sampleVideoFile, setSampleVideoFile] = useState(null);
-  const [registeringFace, setRegisteringFace] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(null);
+
+  // Clean up Object URL to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const handleSelfieChange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setSelfieFiles(e.target.files);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(e.target.files[0]));
+    } else {
+      setSelfieFiles([]);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  };
 
   /**
    * Dynamically loads the vladmandic/face-api script and initializes required tiny models.
@@ -208,14 +233,26 @@ export default function SelectiveFacePreservation({
             type="file"
             multiple
             accept="image/*"
-            onChange={(e) => setSelfieFiles(e.target.files)}
-            disabled={registeringFace}
-            className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-slate-900 file:text-slate-200 file:hover:bg-slate-850 file:cursor-pointer cursor-pointer bg-slate-950/40 p-2 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-all"
+            onChange={handleSelfieChange}
+            disabled={registeringFace || processing}
+            className={`w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-slate-900 file:text-slate-200 file:hover:bg-slate-850 file:cursor-pointer cursor-pointer bg-slate-950/40 p-2 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-all ${(registeringFace || processing) ? "opacity-50 cursor-not-allowed" : ""}`}
           />
-          {selfieFiles.length > 0 && (
-            <span className="text-[10px] text-slate-500 block font-mono">
-              {selfieFiles.length} selfie(s) selected
-            </span>
+          {previewUrl && (
+            <div className="flex items-center gap-3 mt-2 p-2 bg-slate-900/60 rounded-xl border border-slate-800/50">
+              <img
+                src={previewUrl}
+                alt="Selfie preview"
+                className="w-12 h-12 object-cover rounded-lg border border-slate-700/80 shadow-md"
+              />
+              <div>
+                <span className="text-[10px] text-slate-350 block font-semibold truncate max-w-[150px]">
+                  {selfieFiles[0]?.name}
+                </span>
+                <span className="text-[9px] text-slate-500 block font-mono">
+                  {selfieFiles.length} image{selfieFiles.length !== 1 ? "s" : ""} selected
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
@@ -227,8 +264,8 @@ export default function SelectiveFacePreservation({
             type="file"
             accept="video/*"
             onChange={(e) => setSampleVideoFile(e.target.files[0])}
-            disabled={registeringFace}
-            className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-slate-900 file:text-slate-200 file:hover:bg-slate-850 file:cursor-pointer cursor-pointer bg-slate-950/40 p-2 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-all"
+            disabled={registeringFace || processing}
+            className={`w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-slate-900 file:text-slate-200 file:hover:bg-slate-850 file:cursor-pointer cursor-pointer bg-slate-950/40 p-2 border border-slate-800/80 rounded-lg hover:border-slate-700 transition-all ${(registeringFace || processing) ? "opacity-50 cursor-not-allowed" : ""}`}
           />
           {sampleVideoFile && (
             <span className="text-[10px] text-slate-500 block font-mono">
@@ -239,9 +276,9 @@ export default function SelectiveFacePreservation({
 
         <button
           onClick={registerTargetProfile}
-          disabled={registeringFace || selfieFiles.length < 4 || !sampleVideoFile}
+          disabled={registeringFace || processing || selfieFiles.length < 4 || !sampleVideoFile}
           className={`w-full py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${
-            registeringFace
+            registeringFace || processing
               ? "bg-slate-800 text-slate-500 cursor-not-allowed"
               : selfieFiles.length >= 4 && sampleVideoFile
               ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/15"
@@ -253,6 +290,8 @@ export default function SelectiveFacePreservation({
               <div className="w-3.5 h-3.5 border-2 border-violet-500/20 border-t-violet-500 rounded-full animate-spin"></div>
               Analyzing Face Samples...
             </>
+          ) : processing ? (
+            <>Anonymizer In Progress...</>
           ) : (
             <>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

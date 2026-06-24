@@ -30,7 +30,8 @@ export default function VideoAnonymizer({
   loading,
   setLoading,
   error,
-  setError
+  setError,
+  disabled
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
@@ -447,15 +448,17 @@ export default function VideoAnonymizer({
     <>
       {!originalVideoUrl ? (
         <div
-          onDragEnter={handleDrag}
-          onDragOver={handleDrag}
-          onDragLeave={handleDrag}
-          onDrop={handleDrop}
-          onClick={triggerFileInput}
-          className={`relative group border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${
-            dragActive
-              ? "border-violet-500 bg-violet-600/5 shadow-inner"
-              : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90"
+          onDragEnter={!disabled ? handleDrag : undefined}
+          onDragOver={!disabled ? handleDrag : undefined}
+          onDragLeave={!disabled ? handleDrag : undefined}
+          onDrop={!disabled ? handleDrop : undefined}
+          onClick={!disabled ? triggerFileInput : undefined}
+          className={`relative group border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
+            disabled
+              ? "border-slate-900 bg-[#0c0e14]/25 opacity-50 cursor-not-allowed"
+              : dragActive
+              ? "border-violet-500 bg-violet-600/5 shadow-inner cursor-pointer"
+              : "border-slate-800 bg-[#0c0e14]/55 hover:border-slate-700 hover:bg-[#0c0e14]/90 cursor-pointer"
           }`}
         >
           <input
@@ -463,6 +466,7 @@ export default function VideoAnonymizer({
             ref={fileInputRef}
             onChange={handleFileChange}
             accept="video/mp4, video/quicktime, video/mov"
+            disabled={disabled}
             className="hidden"
           />
 
@@ -496,8 +500,12 @@ export default function VideoAnonymizer({
             </div>
             <button
               onClick={resetAll}
-              disabled={loading}
-              className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+              disabled={loading || disabled}
+              className={`px-3 py-1.5 border border-slate-800 text-xs rounded-md text-slate-400 bg-slate-950/40 transition-all ${
+                loading || disabled
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:border-rose-500/40 hover:text-rose-400 hover:bg-rose-500/5"
+              }`}
             >
               Remove
             </button>
@@ -515,7 +523,7 @@ export default function VideoAnonymizer({
                   ref={sourceVideoRef}
                   src={originalVideoUrl}
                   className="w-full h-full object-contain"
-                  controls={status === "idle" || status === "done"}
+                  controls={!disabled && (status === "idle" || status === "done")}
                 />
               </div>
             </div>
@@ -530,7 +538,7 @@ export default function VideoAnonymizer({
                   <video
                     src={blurredVideoUrl}
                     className="w-full h-full object-contain"
-                    controls
+                    controls={!disabled}
                     autoPlay
                   />
                 ) : status === "loading-model" || status === "processing" || status === "encoding" ? (
@@ -571,7 +579,12 @@ export default function VideoAnonymizer({
             <div className="flex justify-end pt-2">
               <button
                 onClick={handleSubmit}
-                className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
+                disabled={disabled}
+                className={`px-6 py-3 text-sm font-semibold rounded-lg text-white shadow-lg transition-all flex items-center gap-2 ${
+                  disabled
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 shadow-violet-500/25 hover:shadow-violet-500/35"
+                }`}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -590,9 +603,14 @@ export default function VideoAnonymizer({
                 Face Blurring Complete!
               </span>
               <a
-                href={blurredVideoUrl}
+                href={disabled ? undefined : blurredVideoUrl}
                 download={`blurred-${file?.name || "video.mp4"}`}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
+                onClick={(e) => disabled && e.preventDefault()}
+                className={`px-5 py-2.5 bg-slate-900 border border-slate-800 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2 ${
+                  disabled
+                    ? "opacity-40 cursor-not-allowed pointer-events-none"
+                    : "hover:bg-slate-850 hover:border-slate-700"
+                }`}
               >
                 <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

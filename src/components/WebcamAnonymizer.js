@@ -26,7 +26,8 @@ export default function WebcamAnonymizer({
   loading,
   setLoading,
   error,
-  setError
+  setError,
+  disabled
 }) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isRecordingCamera, setIsRecordingCamera] = useState(false);
@@ -386,8 +387,12 @@ export default function WebcamAnonymizer({
         {isCameraActive && (
           <button
             onClick={stopCamera}
-            disabled={loading}
-            className="px-3 py-1.5 border border-slate-800 hover:border-rose-500/40 text-xs rounded-md text-slate-400 hover:text-rose-400 bg-slate-950/40 hover:bg-rose-500/5 transition-all"
+            disabled={loading || disabled}
+            className={`px-3 py-1.5 border border-slate-800 text-xs rounded-md text-slate-400 bg-slate-950/40 transition-all ${
+              loading || disabled
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:border-rose-500/40 hover:text-rose-400 hover:bg-rose-500/5"
+            }`}
           >
             Stop Camera
           </button>
@@ -428,7 +433,12 @@ export default function WebcamAnonymizer({
             <p className="text-xs text-slate-400 mb-6">Start your camera to see live face blurring on screen</p>
             <button
               onClick={startCamera}
-              className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-semibold rounded-lg text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/35 transition-all flex items-center gap-2"
+              disabled={disabled}
+              className={`px-6 py-3 text-sm font-semibold rounded-lg text-white shadow-lg transition-all flex items-center gap-2 ${
+                disabled
+                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 shadow-violet-500/25 hover:shadow-violet-500/35"
+              }`}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -445,7 +455,12 @@ export default function WebcamAnonymizer({
             {!isRecordingCamera ? (
               <button
                 onClick={startCameraRecording}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-xs font-semibold rounded-lg text-white transition-all flex items-center gap-2 shadow-lg shadow-rose-500/15"
+                disabled={disabled}
+                className={`px-5 py-2.5 text-xs font-semibold rounded-lg text-white transition-all flex items-center gap-2 shadow-lg ${
+                  disabled
+                    ? "bg-slate-850 text-slate-500 cursor-not-allowed shadow-none"
+                    : "bg-rose-600 hover:bg-rose-500 shadow-rose-500/15"
+                }`}
               >
                 <span className="w-2 h-2 rounded-full bg-white"></span>
                 Start Recording
@@ -453,7 +468,12 @@ export default function WebcamAnonymizer({
             ) : (
               <button
                 onClick={stopCameraRecording}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-rose-400 transition-all flex items-center gap-2"
+                disabled={disabled}
+                className={`px-5 py-2.5 bg-slate-900 border border-slate-800 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                  disabled
+                    ? "text-slate-500 opacity-50 cursor-not-allowed"
+                    : "hover:bg-slate-850 hover:border-slate-700 text-rose-400"
+                }`}
               >
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
                 Stop Recording
@@ -463,9 +483,14 @@ export default function WebcamAnonymizer({
 
           {cameraRecordUrl && (
             <a
-              href={cameraRecordUrl}
+              href={disabled ? undefined : cameraRecordUrl}
               download="live-webcam-blurred.mp4"
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2"
+              onClick={(e) => disabled && e.preventDefault()}
+              className={`px-5 py-2.5 bg-slate-900 border border-slate-800 text-xs font-semibold rounded-lg text-slate-200 transition-all flex items-center gap-2 ${
+                disabled
+                  ? "opacity-40 cursor-not-allowed pointer-events-none"
+                  : "hover:bg-slate-850 hover:border-slate-700"
+              }`}
             >
               <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

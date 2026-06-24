@@ -8,12 +8,12 @@ import Link from "next/link";
  * @component
  * @returns {React.ReactElement} The rendered header section.
  */
-export default function Header() {
+export default function Header({ disabled }) {
   return (
     <header className="flex justify-between items-center mb-12 border-b border-slate-800/80 pb-6">
       <Link
-        href="/"
-        className="flex items-center gap-3 cursor-pointer group"
+        href={disabled ? "#" : "/"}
+        className={`flex items-center gap-3 group ${disabled ? "pointer-events-none opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
       >
         <div className="p-2.5 bg-gradient-to-tr from-violet-600 to-fuchsia-600 rounded-xl shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform duration-300">
           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -19,6 +19,7 @@ export default function WorkspacePage() {
   const [activeMode, setActiveMode] = useState("upload"); // 'upload' | 'camera'
   const [status, setStatus] = useState("idle"); // 'idle', 'loading-model', 'processing', 'encoding', 'done'
   const [loading, setLoading] = useState(false);
+  const [registeringFace, setRegisteringFace] = useState(false);
   const [error, setError] = useState(null);
   const [consoleLogs, setConsoleLogs] = useState([]);
 
@@ -75,7 +76,7 @@ export default function WorkspacePage() {
   }, []);
 
   const handleModeChange = (mode) => {
-    if (mode === activeMode) return;
+    if (mode === activeMode || registeringFace) return;
     setActiveMode(mode);
     setStatus("idle");
     setLoading(false);
@@ -90,9 +91,9 @@ export default function WorkspacePage() {
 
       {/* Main Dashboard Grid */}
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 relative z-10">
-        <Header />
+        <Header disabled={registeringFace} />
 
-        <ModeToggle activeMode={activeMode} onModeChange={handleModeChange} />
+        <ModeToggle activeMode={activeMode} onModeChange={handleModeChange} disabled={registeringFace} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left panel: Anonymizer modules based on Mode */}
@@ -108,6 +109,7 @@ export default function WorkspacePage() {
                   setLoading={setLoading}
                   error={error}
                   setError={setError}
+                  disabled={registeringFace}
                 />
               ) : (
                 <WebcamAnonymizer
@@ -117,6 +119,7 @@ export default function WorkspacePage() {
                   setLoading={setLoading}
                   error={error}
                   setError={setError}
+                  disabled={registeringFace}
                 />
               )}
             </div>
@@ -139,6 +142,9 @@ export default function WorkspacePage() {
               targetDescriptor={targetDescriptor}
               setTargetDescriptor={setTargetDescriptor}
               setError={setError}
+              registeringFace={registeringFace}
+              setRegisteringFace={setRegisteringFace}
+              processing={status !== "idle" && status !== "done"}
             />
 
             <ProcessingStages status={status} activeMode={activeMode} />
