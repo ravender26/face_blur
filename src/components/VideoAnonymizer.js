@@ -5,6 +5,23 @@ import {
   processRecognitionForTracksAwaited
 } from "../utils/faceHelpers";
 
+/**
+ * VideoAnonymizer component.
+ * Manages video file uploads, local source playback, offscreen canvas face detection / tracking,
+ * and media encoding to output a blurred target-preserved video.
+ * 
+ * @component
+ * @param {Object} props - Component properties.
+ * @param {React.MutableRefObject<boolean>} props.excludeTargetRef - Ref indicating if the registered target face should be preserved (unblurred).
+ * @param {React.MutableRefObject<Float32Array|null>} props.targetDescriptorRef - Ref containing the averaged 128-dimensional target face descriptor.
+ * @param {string} props.status - The current state of processing ("idle", "loading-model", "processing", "encoding", "done").
+ * @param {function(string): void} props.setStatus - Callback to update the processing state.
+ * @param {boolean} props.loading - Indicates if models or streams are actively loading.
+ * @param {function(boolean): void} props.setLoading - Callback to update the loading state.
+ * @param {string|null} props.error - Current error message.
+ * @param {function(string|null): void} props.setError - Callback to set the error message.
+ * @returns {React.ReactElement} The video upload and client-side processing workspace.
+ */
 export default function VideoAnonymizer({
   excludeTargetRef,
   targetDescriptorRef,
@@ -29,12 +46,15 @@ export default function VideoAnonymizer({
 
   useEffect(() => {
     return () => {
-      // Clean up urls
+      // Clean up local URL objects to prevent memory leaks
       if (originalVideoUrl) URL.revokeObjectURL(originalVideoUrl);
       if (blurredVideoUrl) URL.revokeObjectURL(blurredVideoUrl);
     };
   }, [originalVideoUrl, blurredVideoUrl]);
 
+  /**
+   * Drag-and-drop state controller.
+   */
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -45,6 +65,9 @@ export default function VideoAnonymizer({
     }
   };
 
+  /**
+   * Drops handler for file uploads.
+   */
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -58,6 +81,9 @@ export default function VideoAnonymizer({
     }
   };
 
+  /**
+   * Handles traditional file selection dialogs.
+   */
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
@@ -67,6 +93,9 @@ export default function VideoAnonymizer({
     }
   };
 
+  /**
+   * Verifies file type and formats.
+   */
   const validateFile = (file) => {
     const validTypes = ["video/mp4", "video/quicktime", "video/mov"];
     if (!validTypes.includes(file.type) && !file.name.endsWith(".mov")) {
@@ -77,6 +106,9 @@ export default function VideoAnonymizer({
     return true;
   };
 
+  /**
+   * Assigns active file URLs.
+   */
   const selectFile = (file) => {
     setFile(file);
     setBlurredVideoUrl(null);
@@ -89,6 +121,9 @@ export default function VideoAnonymizer({
     fileInputRef.current.click();
   };
 
+  /**
+   * Resets the entire anonymizer workflow and cleans up memory references.
+   */
   const resetAll = () => {
     if (sourceVideoRef.current) {
       sourceVideoRef.current.pause();
@@ -116,6 +151,10 @@ export default function VideoAnonymizer({
     setDebugText("");
   };
 
+  /**
+   * Spawns MediaPipe WASM detector, captures frame streams from video playback onto offscreen canvas,
+   * performs sequential face recognition checks, draws the anonymizing blur filter, and packages into a final file.
+   */
   const handleSubmit = async () => {
     if (!file || !sourceVideoRef.current) return;
 
@@ -129,6 +168,7 @@ export default function VideoAnonymizer({
     let animationFrameId = null;
 
     try {
+      // 1. Initialize detector models
       const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
@@ -146,6 +186,7 @@ export default function VideoAnonymizer({
 
       activeDetectorRef.current = detector;
 
+      // 2. Prep metadata and canvas layers
       const video = sourceVideoRef.current;
       const canvas = canvasRef.current;
       if (!canvas) {
@@ -170,9 +211,11 @@ export default function VideoAnonymizer({
 
       setStatus("processing");
 
+      // 3. Initiate recording streams
       const fps = 30;
       const canvasStream = canvas.captureStream ? canvas.captureStream(fps) : canvas.mozCaptureStream(fps);
 
+      // Extract original audio track if present
       try {
         const videoStream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
         if (videoStream) {
@@ -249,6 +292,7 @@ export default function VideoAnonymizer({
       let faceTracks = [];
       const trackIdCounterRef = { current: 0 };
 
+      // 4. Sequential frame render and recognition handler
       const processFrame = async () => {
         try {
           if (video.paused || video.ended) {
@@ -297,6 +341,7 @@ export default function VideoAnonymizer({
                 trackIdCounterRef
               );
 
+              // Perfect sync awaited recognition
               await processRecognitionForTracksAwaited(
                 faceTracks,
                 excludeTargetRef.current,

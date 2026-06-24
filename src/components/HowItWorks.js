@@ -1,3 +1,11 @@
+/**
+ * HowItWorks component.
+ * Renders an informational explanation block regarding the application's client-side processing pipeline,
+ * including HTML5 APIs, MediaPipe WebAssembly vision tasks, and MediaRecorder API.
+ * 
+ * @component
+ * @returns {React.ReactElement} The informational block.
+ */
 export default function HowItWorks() {
   return (
     <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-2xl space-y-4">

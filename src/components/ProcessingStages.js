@@ -1,3 +1,13 @@
+/**
+ * ProcessingStages component.
+ * Displays a visual timeline checklist of stages (Initialize, Process, Encode) showing completed, active, and upcoming stages.
+ * 
+ * @component
+ * @param {Object} props - Component properties.
+ * @param {string} props.status - The current state of processing ("idle", "loading-model", "processing", "encoding", "done").
+ * @param {string} props.activeMode - The active interface mode ("upload" or "camera").
+ * @returns {React.ReactElement} The visual stages tracking card.
+ */
 export default function ProcessingStages({ status, activeMode }) {
   const steps = [
     {

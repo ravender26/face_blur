@@ -1,5 +1,20 @@
 import { useState } from "react";
 
+/**
+ * SelectiveFacePreservation component.
+ * Allows users to register a target person's face descriptor by uploading selfies and a short video.
+ * Once registered, the user can toggle target face exclusion to bypass blurring on the target person.
+ * It uses `face-api.js` loaded client-side via a CDN script to extract face descriptors and compute their mean.
+ * 
+ * @component
+ * @param {Object} props - Component properties.
+ * @param {boolean} props.excludeTarget - Whether target face preservation is enabled.
+ * @param {function(boolean): void} props.setExcludeTarget - Callback to update preservation setting state.
+ * @param {Float32Array|null} props.targetDescriptor - The 128-dimensional target face descriptor representation.
+ * @param {function(Float32Array|null): void} props.setTargetDescriptor - Callback to update the target face descriptor state.
+ * @param {function(string|null): void} props.setError - Callback to bubble up error alerts.
+ * @returns {React.ReactElement} The rendered registration and settings control panel.
+ */
 export default function SelectiveFacePreservation({
   excludeTarget,
   setExcludeTarget,
@@ -12,6 +27,12 @@ export default function SelectiveFacePreservation({
   const [registeringFace, setRegisteringFace] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(null);
 
+  /**
+   * Dynamically loads the vladmandic/face-api script and initializes required tiny models.
+   * Resolves with the faceapi object.
+   * 
+   * @returns {Promise<Object>} The initialized window.faceapi instance.
+   */
   const loadFaceApi = () => {
     return new Promise((resolve, reject) => {
       if (window.faceapi) {
@@ -39,6 +60,10 @@ export default function SelectiveFacePreservation({
     });
   };
 
+  /**
+   * Processes the uploaded selfies and video frames to generate and average their face descriptors.
+   * Updates targetDescriptor with the mean face profile representation.
+   */
   const registerTargetProfile = async () => {
     if (selfieFiles.length < 4) {
       setError("Please select at least 4 selfie images of the target person.");

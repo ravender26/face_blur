@@ -1,3 +1,13 @@
+/**
+ * ModeToggle component.
+ * Provides controls to toggle between the Video File Anonymizer and Live Webcam Feed modes.
+ * 
+ * @component
+ * @param {Object} props - Component properties.
+ * @param {string} props.activeMode - The active interface mode ("upload" or "camera").
+ * @param {function(string): void} props.onModeChange - Callback fired when a new mode is selected.
+ * @returns {React.ReactElement} The mode toggling tabs component.
+ */
 export default function ModeToggle({ activeMode, onModeChange }) {
   return (
     <div className="flex gap-4 mb-8 bg-[#0f131d]/60 border border-slate-800/80 p-1.5 rounded-xl w-fit">

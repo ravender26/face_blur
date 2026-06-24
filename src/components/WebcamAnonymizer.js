@@ -5,6 +5,21 @@ import {
   processRecognitionForTracks
 } from "../utils/faceHelpers";
 
+/**
+ * WebcamAnonymizer component.
+ * Manages raw camera streams, handles requestAnimationFrame loop tracking, blurs faces,
+ * and records processed live video feeds.
+ * 
+ * @component
+ * @param {Object} props - Component properties.
+ * @param {React.MutableRefObject<boolean>} props.excludeTargetRef - Ref indicating if the registered target face should be preserved (unblurred).
+ * @param {React.MutableRefObject<Float32Array|null>} props.targetDescriptorRef - Ref containing the averaged 128-dimensional target face descriptor.
+ * @param {boolean} props.loading - Indicates if models or streams are actively loading.
+ * @param {function(boolean): void} props.setLoading - Callback to update loading state.
+ * @param {string|null} props.error - Current error message.
+ * @param {function(string|null): void} props.setError - Callback to set error messages.
+ * @returns {React.ReactElement} The webcam live processing feed.
+ */
 export default function WebcamAnonymizer({
   excludeTargetRef,
   targetDescriptorRef,
@@ -27,7 +42,7 @@ export default function WebcamAnonymizer({
 
   useEffect(() => {
     return () => {
-      // Clean up camera stream and animation frame
+      // Clean up camera resources and object URLs on unmount
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -45,6 +60,10 @@ export default function WebcamAnonymizer({
     };
   }, [cameraRecordUrl]);
 
+  /**
+   * Accesses user media webcam streams (with progressive quality fallbacks),
+   * initializes MediaPipe FaceDetector instance, and starts the render loop.
+   */
   const startCamera = async () => {
     setLoading(true);
     setError(null);
@@ -87,6 +106,7 @@ export default function WebcamAnonymizer({
       }
       cameraStreamRef.current = stream;
 
+      // Assign camera streams using a safe promise loader block to avoid play/onloadedmetadata race conditions
       if (webcamVideoRef.current) {
         const video = webcamVideoRef.current;
         await new Promise((resolve) => {
@@ -109,6 +129,7 @@ export default function WebcamAnonymizer({
         });
       }
 
+      // Initialize resolver and detector models
       const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
@@ -148,6 +169,7 @@ export default function WebcamAnonymizer({
       let faceTracks = [];
       const trackIdCounterRef = { current: 0 };
 
+      // Recurring requestAnimationFrame rendering loop
       const processCameraFrame = async () => {
         if (!cameraStreamRef.current || video.paused || video.ended) return;
 
@@ -183,6 +205,7 @@ export default function WebcamAnonymizer({
               trackIdCounterRef
             );
 
+            // Execute recognition in parallel to retain smooth frames (non-blocking)
             processRecognitionForTracks(
               faceTracks,
               excludeTargetRef.current,
@@ -256,6 +279,9 @@ export default function WebcamAnonymizer({
     }
   };
 
+  /**
+   * Stops camera streams and resets canvas contexts.
+   */
   const stopCamera = () => {
     if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
       try {
@@ -290,6 +316,9 @@ export default function WebcamAnonymizer({
     setDebugText("");
   };
 
+  /**
+   * Starts a MediaRecorder instance capturing the canvas element stream.
+   */
   const startCameraRecording = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -334,6 +363,9 @@ export default function WebcamAnonymizer({
     setIsRecordingCamera(true);
   };
 
+  /**
+   * Stops active camera recording streams.
+   */
   const stopCameraRecording = () => {
     if (cameraRecorderRef.current && cameraRecorderRef.current.state === "recording") {
       cameraRecorderRef.current.stop();

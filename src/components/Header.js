@@ -1,3 +1,10 @@
+/**
+ * Header component for the FocusBlur application.
+ * Renders the brand logo, application title, and a status badge indicating client-side WebAssembly (WASM) face blurring is active.
+ * 
+ * @component
+ * @returns {React.ReactElement} The rendered header section.
+ */
 export default function Header() {
   return (
     <header className="flex justify-between items-center mb-12 border-b border-slate-800/80 pb-6">
