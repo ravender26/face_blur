@@ -8,7 +8,8 @@ All global states reside in the main coordinator component [page.js](file:///c:/
 
 ```mermaid
 graph TD
-  Page[page.js Coordinator] --> Header[Header Component]
+  Page[page.js Coordinator] --> Landing[LandingPage Component]
+  Page --> Header[Header Component]
   Page --> ModeToggle[ModeToggle Component]
   Page --> Preservation[SelectiveFacePreservation Component]
   Page --> VideoAnon[VideoAnonymizer Component]
@@ -18,15 +19,22 @@ graph TD
   Page --> Logs[ConsoleLogs Component]
 
   classDef component fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc;
-  class Page,Header,ModeToggle,Preservation,VideoAnon,WebcamAnon,Stages,HowItWorks,Logs component;
+  class Page,Landing,Header,ModeToggle,Preservation,VideoAnon,WebcamAnon,Stages,HowItWorks,Logs component;
 ```
 
 ---
 
 ## Component Index
 
+### 0. [LandingPage.js](file:///c:/Users/raven/Desktop/React%20Project/face_blur/src/components/LandingPage.js)
+Premium landing page explaining the application's capabilities (Real-time webcam blurring, Selective face preservation, local WASM security, and compliance).
+- **Props**:
+  - `onTryNow`: Callback function to transition state and launch the workspace.
+
 ### 1. [Header.js](file:///c:/Users/raven/Desktop/React%20Project/face_blur/src/components/Header.js)
-Static UI component rendering the brand logo, application titles, and metadata tags (e.g. WASM active badge).
+Static UI component rendering the brand logo, application titles, and metadata tags. Supports navigating back to the landing page.
+- **Props**:
+  - `onBackToHome`: Optional callback triggered when clicking the logo to go back.
 
 ### 2. [ModeToggle.js](file:///c:/Users/raven/Desktop/React%20Project/face_blur/src/components/ModeToggle.js)
 A tab-switching component controlling active views.
@@ -35,7 +43,7 @@ A tab-switching component controlling active views.
   - `onModeChange`: Callback changing the parent mode state.
 
 ### 3. [SelectiveFacePreservation.js](file:///c:/Users/raven/Desktop/React%20Project/face_blur/src/components/SelectiveFacePreservation.js)
-Manages uploads of selfie images and target videos to calculateaveraged target face descriptors using face-api.js client-side.
+Manages uploads of selfie images and target videos to calculate averaged target face descriptors using face-api.js client-side.
 - **Props**:
   - `excludeTarget`: `boolean` setting
   - `setExcludeTarget`: state setter callback

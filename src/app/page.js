@@ -9,8 +9,18 @@ import WebcamAnonymizer from "../components/WebcamAnonymizer";
 import ProcessingStages from "../components/ProcessingStages";
 import HowItWorks from "../components/HowItWorks";
 import ConsoleLogs from "../components/ConsoleLogs";
+import LandingPage from "../components/LandingPage";
 
+/**
+ * Main application Home coordinator.
+ * Manages whether to display the Landing Page or the Anonymization Dashboard Workspace.
+ * Hosts shared state variables passed down to modular sub-components.
+ * 
+ * @component
+ * @returns {React.ReactElement} The rendered interface layout.
+ */
 export default function Home() {
+  const [showDashboard, setShowDashboard] = useState(false);
   const [activeMode, setActiveMode] = useState("upload"); // 'upload' | 'camera'
   const [status, setStatus] = useState("idle"); // 'idle', 'loading-model', 'processing', 'encoding', 'done'
   const [loading, setLoading] = useState(false);
@@ -77,6 +87,11 @@ export default function Home() {
     setError(null);
   };
 
+  // Render Landing Page if dashboard is not requested
+  if (!showDashboard) {
+    return <LandingPage onTryNow={() => setShowDashboard(true)} />;
+  }
+
   return (
     <main className="flex-1 bg-[#090b11] text-slate-100 min-h-screen relative overflow-hidden font-sans">
       {/* Background ambient glows */}
@@ -85,7 +100,7 @@ export default function Home() {
 
       {/* Main Dashboard Grid */}
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 relative z-10">
-        <Header />
+        <Header onBackToHome={() => setShowDashboard(false)} />
 
         <ModeToggle activeMode={activeMode} onModeChange={handleModeChange} />
 
