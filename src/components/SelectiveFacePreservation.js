@@ -122,7 +122,7 @@ export default function SelectiveFacePreservation({
         if (desc) {
           descriptors.push(desc);
         } else {
-          console.warn(`No face detected in selfie ${i + 1}`);
+          throw new Error(`Face not detected in selfie "${file.name}". Upload other selfie.`);
         }
       }
 
@@ -183,6 +183,7 @@ export default function SelectiveFacePreservation({
     } catch (err) {
       console.error("Face registration error:", err);
       setError(err.message || "Failed to analyze and register target face.");
+      alert(err.message || "Failed to analyze and register target face.");
     } finally {
       setRegisteringFace(false);
     }
