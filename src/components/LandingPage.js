@@ -1,4 +1,10 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../context/AuthContext";
+import LoginModal from "./LoginModal";
 
 /**
  * LandingPage component.
@@ -10,6 +16,25 @@ import Link from "next/link";
  * @returns {React.ReactElement} The rendered landing page.
  */
 export default function LandingPage() {
+  const router = useRouter();
+  const { user, triggerLoginModal } = useAuth();
+
+  // Redirect to workspace automatically if already authenticated or logs in
+  useEffect(() => {
+    if (user) {
+      router.push("/workspace");
+    }
+  }, [user, router]);
+
+  const handleStartFree = (e) => {
+    e.preventDefault();
+    if (user) {
+      router.push("/workspace");
+    } else {
+      triggerLoginModal();
+    }
+  };
+
   return (
     <div className="min-h-screen text-slate-100 font-sans flex flex-col justify-between relative overflow-hidden bg-[#090b11]">
       {/* Background glowing decorations */}
@@ -30,12 +55,12 @@ export default function LandingPage() {
             FocusBlur
           </span>
         </div>
-        <Link
-          href="/workspace"
-          className="px-4 py-2 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-500/5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white transition-all shadow-md"
+        <button
+          onClick={handleStartFree}
+          className="px-4 py-2 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-500/5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white transition-all shadow-md cursor-pointer"
         >
-          Launch Workspace
-        </Link>
+          {user ? "Launch Workspace" : "Sign In"}
+        </button>
       </nav>
 
       {/* Main Content Hero */}
@@ -61,15 +86,15 @@ export default function LandingPage() {
 
         {/* Call to Actions (CTA) */}
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-          <Link
-            href="/workspace"
-            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-bold rounded-xl text-white shadow-xl shadow-violet-600/25 hover:shadow-violet-600/35 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
+          <button
+            onClick={handleStartFree}
+            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-sm font-bold rounded-xl text-white shadow-xl shadow-violet-600/25 hover:shadow-violet-600/35 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group cursor-pointer"
           >
             Get Started Free
             <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
-          </Link>
+          </button>
         </div>
 
         {/* Feature Grid / Capabilities */}
@@ -163,6 +188,7 @@ export default function LandingPage() {
           <a href="#" className="hover:text-slate-350 transition-colors">Terms of Service</a>
         </div>
       </footer>
+      <LoginModal />
     </div>
   );
 }

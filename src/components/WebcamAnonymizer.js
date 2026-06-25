@@ -1,4 +1,7 @@
+"use client";
+
 import { useState, useRef, useEffect } from "react";
+import { useWorkspace } from "../context/WorkspaceContext";
 import {
   parseDetection,
   updateTracks,
@@ -11,24 +14,18 @@ import {
  * and records processed live video feeds.
  * 
  * @component
- * @param {Object} props - Component properties.
- * @param {React.MutableRefObject<boolean>} props.excludeTargetRef - Ref indicating if the registered target face should be preserved (unblurred).
- * @param {React.MutableRefObject<Float32Array|null>} props.targetDescriptorRef - Ref containing the averaged 128-dimensional target face descriptor.
- * @param {boolean} props.loading - Indicates if models or streams are actively loading.
- * @param {function(boolean): void} props.setLoading - Callback to update loading state.
- * @param {string|null} props.error - Current error message.
- * @param {function(string|null): void} props.setError - Callback to set error messages.
  * @returns {React.ReactElement} The webcam live processing feed.
  */
-export default function WebcamAnonymizer({
-  excludeTargetRef,
-  targetDescriptorRef,
-  loading,
-  setLoading,
-  error,
-  setError,
-  disabled
-}) {
+export default function WebcamAnonymizer() {
+  const {
+    excludeTargetRef,
+    targetDescriptorRef,
+    loading,
+    setLoading,
+    error,
+    setError,
+    registeringFace: disabled
+  } = useWorkspace();
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isRecordingCamera, setIsRecordingCamera] = useState(false);
   const [cameraRecordUrl, setCameraRecordUrl] = useState(null);

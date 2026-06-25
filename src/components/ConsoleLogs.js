@@ -1,13 +1,16 @@
+"use client";
+
+import { useWorkspace } from "../context/WorkspaceContext";
+
 /**
  * ConsoleLogs component.
  * Renders intercepted console logs in a scrollable container to assist developers with diagnostics and debugging.
  * 
  * @component
- * @param {Object} props - Component properties.
- * @param {string[]} props.consoleLogs - Intercepted log strings containing logging category prefixes.
  * @returns {React.ReactElement} The visual debug logs dashboard.
  */
-export default function ConsoleLogs({ consoleLogs }) {
+export default function ConsoleLogs() {
+  const { consoleLogs } = useWorkspace();
   return (
     <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-2xl space-y-4">
       <h3 className="text-sm font-semibold text-slate-300">Console Logs</h3>
