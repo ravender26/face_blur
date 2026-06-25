@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
@@ -17,6 +18,13 @@ import LoginModal from "./LoginModal";
 export default function LandingPage() {
   const router = useRouter();
   const { user, triggerLoginModal } = useAuth();
+
+  // Redirect to workspace automatically if already authenticated or logs in
+  useEffect(() => {
+    if (user) {
+      router.push("/workspace");
+    }
+  }, [user, router]);
 
   const handleStartFree = (e) => {
     e.preventDefault();
