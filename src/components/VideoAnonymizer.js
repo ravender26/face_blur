@@ -1,4 +1,7 @@
+"use client";
+
 import { useState, useRef, useEffect } from "react";
+import { useWorkspace } from "../context/WorkspaceContext";
 import {
   parseDetection,
   updateTracks,
@@ -11,28 +14,20 @@ import {
  * and media encoding to output a blurred target-preserved video.
  * 
  * @component
- * @param {Object} props - Component properties.
- * @param {React.MutableRefObject<boolean>} props.excludeTargetRef - Ref indicating if the registered target face should be preserved (unblurred).
- * @param {React.MutableRefObject<Float32Array|null>} props.targetDescriptorRef - Ref containing the averaged 128-dimensional target face descriptor.
- * @param {string} props.status - The current state of processing ("idle", "loading-model", "processing", "encoding", "done").
- * @param {function(string): void} props.setStatus - Callback to update the processing state.
- * @param {boolean} props.loading - Indicates if models or streams are actively loading.
- * @param {function(boolean): void} props.setLoading - Callback to update the loading state.
- * @param {string|null} props.error - Current error message.
- * @param {function(string|null): void} props.setError - Callback to set the error message.
  * @returns {React.ReactElement} The video upload and client-side processing workspace.
  */
-export default function VideoAnonymizer({
-  excludeTargetRef,
-  targetDescriptorRef,
-  status,
-  setStatus,
-  loading,
-  setLoading,
-  error,
-  setError,
-  disabled
-}) {
+export default function VideoAnonymizer() {
+  const {
+    excludeTargetRef,
+    targetDescriptorRef,
+    status,
+    setStatus,
+    loading,
+    setLoading,
+    error,
+    setError,
+    registeringFace: disabled
+  } = useWorkspace();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState(null);
   const [originalVideoUrl, setOriginalVideoUrl] = useState(null);

@@ -1,4 +1,7 @@
+"use client";
+
 import { useState, useEffect } from "react";
+import { useWorkspace } from "../context/WorkspaceContext";
 
 /**
  * SelectiveFacePreservation component.
@@ -7,27 +10,21 @@ import { useState, useEffect } from "react";
  * It uses `face-api.js` loaded client-side via a CDN script to extract face descriptors and compute their mean.
  * 
  * @component
- * @param {Object} props - Component properties.
- * @param {boolean} props.excludeTarget - Whether target face preservation is enabled.
- * @param {function(boolean): void} props.setExcludeTarget - Callback to update preservation setting state.
- * @param {Float32Array|null} props.targetDescriptor - The 128-dimensional target face descriptor representation.
- * @param {function(Float32Array|null): void} props.setTargetDescriptor - Callback to update the target face descriptor state.
- * @param {function(string|null): void} props.setError - Callback to bubble up error alerts.
- * @param {boolean} props.registeringFace - Lifted state indicating if face registration is active.
- * @param {function(boolean): void} props.setRegisteringFace - Callback to update face registration state.
- * @param {boolean} props.processing - Indicates if video/camera anonymizer is currently active.
  * @returns {React.ReactElement} The rendered registration and settings control panel.
  */
-export default function SelectiveFacePreservation({
-  excludeTarget,
-  setExcludeTarget,
-  targetDescriptor,
-  setTargetDescriptor,
-  setError,
-  registeringFace,
-  setRegisteringFace,
-  processing
-}) {
+export default function SelectiveFacePreservation() {
+  const {
+    excludeTarget,
+    setExcludeTarget,
+    targetDescriptor,
+    setTargetDescriptor,
+    setError,
+    registeringFace,
+    setRegisteringFace,
+    status
+  } = useWorkspace();
+
+  const processing = status !== "idle" && status !== "done";
   const [selfieFiles, setSelfieFiles] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [sampleVideoFile, setSampleVideoFile] = useState(null);
