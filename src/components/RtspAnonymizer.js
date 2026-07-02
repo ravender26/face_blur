@@ -29,11 +29,14 @@ export default function RtspAnonymizer() {
   } = useWorkspace();
 
   const [rtspUrl, setRtspUrl] = useState("rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov");
+  const [proxyUrl, setProxyUrl] = useState("http://127.0.0.1:9999");
   const [streamUrl, setStreamUrl] = useState(null);
   const [isStreamActive, setIsStreamActive] = useState(false);
   const [isRecordingStream, setIsRecordingStream] = useState(false);
   const [streamRecordUrl, setStreamRecordUrl] = useState(null);
   const [debugText, setDebugText] = useState("");
+
+  const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const rtspImageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -137,10 +140,9 @@ export default function RtspAnonymizer() {
       isStreamingRef.current = true;
       setIsStreamActive(true);
 
-      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
       const targetUrl = isLocalhost 
         ? `/api/stream?url=${encodeURIComponent(rtspUrl)}` 
-        : `http://127.0.0.1:9999/stream?url=${encodeURIComponent(rtspUrl)}`;
+        : `${proxyUrl.replace(/\/$/, "")}/stream?url=${encodeURIComponent(rtspUrl)}`;
 
       console.log(`[RTSP Debug] Environment: ${isLocalhost ? "localhost" : "production/deployed"}. Setting stream URL target to:`, targetUrl);
       setStreamUrl(targetUrl);
@@ -170,7 +172,6 @@ export default function RtspAnonymizer() {
    */
   const handleImageError = () => {
     console.error("[RTSP Debug] Proxied image stream load error.");
-    const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
     if (!isLocalhost) {
       setError("Failed to connect to the RTSP stream. Since the application is deployed in the cloud, please ensure you have started the local helper proxy on your computer (.venv\\Scripts\\python rtsp_proxy.py) and that your camera stream address is valid.");
     } else {
@@ -454,6 +455,25 @@ export default function RtspAnonymizer() {
                 Connect Stream
               </button>
             </div>
+            
+            {!isLocalhost && (
+              <div className="mt-4 p-4 bg-slate-900/60 border border-slate-800/80 rounded-xl space-y-2 animate-fadeIn">
+                <label className="text-[10px] font-bold text-violet-400 tracking-wider uppercase font-mono block">
+                  Secure Local Proxy Settings (Required for Vercel)
+                </label>
+                <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                  Browsers block insecure HTTP links on HTTPS sites (like Vercel). To connect, run a secure HTTPS tunnel to your local proxy port 9999 (e.g. run <code className="bg-slate-950 px-1.5 py-0.5 rounded text-fuchsia-400 font-bold">npx localtunnel --port 9999</code> or <code className="bg-slate-950 px-1.5 py-0.5 rounded text-fuchsia-400 font-bold">ngrok http 9999</code>) and paste the HTTPS tunnel address below:
+                </p>
+                <input
+                  type="text"
+                  value={proxyUrl}
+                  onChange={(e) => setProxyUrl(e.target.value)}
+                  placeholder="https://your-tunnel-subdomain.localtunnel.me"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-350 focus:outline-none focus:border-violet-500/40 font-mono"
+                />
+              </div>
+            )}
+
             <p className="text-[10px] text-slate-500 font-mono leading-relaxed mt-1">
               Note: Browsers do not support RTSP directly. Next.js will proxy the stream locally using Python and OpenCV. Feel free to input public test RTSP feeds or custom network links.
             </p>
