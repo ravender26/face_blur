@@ -66,11 +66,12 @@ def start_tunnel_background(port):
 
 class MJPEGHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
-        # Handle CORS preflight requests
+        # Handle CORS and Private Network Access preflight requests
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Access-Control-Request-Private-Network')
+        self.send_header('Access-Control-Allow-Private-Network', 'true')
         self.end_headers()
 
     def do_GET(self):
@@ -95,10 +96,11 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"Error parsing URL: {e}")
             
-            # Set response headers with CORS wildcard
+            # Set response headers with CORS wildcard and Private Network Access
             self.send_response(200)
             self.send_header('Content-type', 'multipart/x-mixed-replace; boundary=frame')
             self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Private-Network', 'true')
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
             self.end_headers()
