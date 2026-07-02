@@ -45,6 +45,8 @@ export default function RtspAnonymizer() {
   const faceTracksRef = useRef([]);
   const trackIdCounterRef = useRef(0);
   const streamInitializedRef = useRef(false);
+  const tickCountRef = useRef(0);
+  const isStreamingRef = useRef(false);
 
   // Clean up resources on unmount
   useEffect(() => {
@@ -80,6 +82,8 @@ export default function RtspAnonymizer() {
     activeDetectorRef.current = null;
 
     streamInitializedRef.current = false;
+    isStreamingRef.current = false;
+    tickCountRef.current = 0;
     setIsStreamActive(false);
     setIsRecordingStream(false);
     setStreamUrl(null);
@@ -98,6 +102,7 @@ export default function RtspAnonymizer() {
       return;
     }
 
+    console.log("[RTSP Debug] Connect Stream clicked. URL:", rtspUrl);
     setLoading(true);
     setError(null);
     setStreamRecordUrl(null);
@@ -106,11 +111,13 @@ export default function RtspAnonymizer() {
 
     try {
       // 1. Initialize resolver and detector models
+      console.log("[RTSP Debug] Loading MediaPipe FilesetResolver...");
       const { FilesetResolver, FaceDetector } = await import("@mediapipe/tasks-vision");
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
       );
 
+      console.log("[RTSP Debug] Creating FaceDetector model instance...");
       const detector = await FaceDetector.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
@@ -121,14 +128,17 @@ export default function RtspAnonymizer() {
         minSuppressionThreshold: 0.3,
       });
       activeDetectorRef.current = detector;
+      console.log("[RTSP Debug] FaceDetector initialized successfully.");
 
       // Create an offscreen canvas
       tempCanvasRef.current = document.createElement("canvas");
 
       // 2. Set the proxied url to trigger image loading
-      // Next.js API handles the spawning and piping of the Python child process
+      isStreamingRef.current = true;
       setIsStreamActive(true);
-      setStreamUrl(`/api/stream?url=${encodeURIComponent(rtspUrl)}`);
+      const targetUrl = `/api/stream?url=${encodeURIComponent(rtspUrl)}`;
+      console.log("[RTSP Debug] Setting stream URL target to:", targetUrl);
+      setStreamUrl(targetUrl);
 
       // Start the frame processing loop immediately (we'll check dimensions dynamically in the loop)
       if (animationFrameIdRef.current) {
@@ -136,7 +146,7 @@ export default function RtspAnonymizer() {
       }
       animationFrameIdRef.current = requestAnimationFrame(processRtspFrame);
     } catch (err) {
-      console.error("Failed to start RTSP stream:", err);
+      console.error("[RTSP Debug] Failed to start RTSP stream:", err);
       setError(err.message || "Failed to initialize face detector.");
       cleanupStream();
     }
@@ -154,7 +164,7 @@ export default function RtspAnonymizer() {
    * Called if the proxied MJPEG stream fails to load.
    */
   const handleImageError = () => {
-    console.error("Proxied image stream error.");
+    console.error("[RTSP Debug] Proxied image stream load error.");
     setError("Failed to connect to the RTSP stream. Please verify that the URL is correct, and the camera feed is active and accessible.");
     cleanupStream();
   };
@@ -169,7 +179,17 @@ export default function RtspAnonymizer() {
     const tempCanvas = tempCanvasRef.current;
     const detector = activeDetectorRef.current;
 
-    if (!img || !canvas || !tempCanvas || !detector || !isStreamActive) {
+    // Periodic state logging to console every 100 ticks
+    tickCountRef.current++;
+    if (tickCountRef.current % 100 === 0) {
+      console.log(`[RTSP Debug] Loop tick #${tickCountRef.current}. imgRef: ${!!img}, naturalSize: ${img ? img.naturalWidth : 0}x${img ? img.naturalHeight : 0}, canvasRef: ${!!canvas}, isStreaming: ${isStreamingRef.current}`);
+    }
+
+    if (!isStreamingRef.current) {
+      return; // Stop the loop entirely!
+    }
+
+    if (!img || !canvas || !tempCanvas || !detector) {
       animationFrameIdRef.current = requestAnimationFrame(processRtspFrame);
       return;
     }
@@ -187,6 +207,7 @@ export default function RtspAnonymizer() {
       // Stream is now actively delivering frames!
       if (!streamInitializedRef.current) {
         streamInitializedRef.current = true;
+        console.log(`[RTSP Debug] First frame resolved! Dimensions: ${width}x${height}`);
         setLoading(false);
         setStatus("processing");
       }
@@ -364,10 +385,8 @@ export default function RtspAnonymizer() {
           ref={rtspImageRef}
           src={streamUrl}
           alt="raw-rtsp-stream-source"
-          crossOrigin="anonymous"
-          onLoad={handleImageLoad}
           onError={handleImageError}
-          className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none"
+          className="absolute -left-[9999px] -top-[9999px] w-[640px] h-[480px] pointer-events-none"
         />
       )}
 
