@@ -136,8 +136,13 @@ export default function RtspAnonymizer() {
       // 2. Set the proxied url to trigger image loading
       isStreamingRef.current = true;
       setIsStreamActive(true);
-      const targetUrl = `/api/stream?url=${encodeURIComponent(rtspUrl)}`;
-      console.log("[RTSP Debug] Setting stream URL target to:", targetUrl);
+
+      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+      const targetUrl = isLocalhost 
+        ? `/api/stream?url=${encodeURIComponent(rtspUrl)}` 
+        : `http://127.0.0.1:9999/stream?url=${encodeURIComponent(rtspUrl)}`;
+
+      console.log(`[RTSP Debug] Environment: ${isLocalhost ? "localhost" : "production/deployed"}. Setting stream URL target to:`, targetUrl);
       setStreamUrl(targetUrl);
 
       // Start the frame processing loop immediately (we'll check dimensions dynamically in the loop)
@@ -165,7 +170,12 @@ export default function RtspAnonymizer() {
    */
   const handleImageError = () => {
     console.error("[RTSP Debug] Proxied image stream load error.");
-    setError("Failed to connect to the RTSP stream. Please verify that the URL is correct, and the camera feed is active and accessible.");
+    const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (!isLocalhost) {
+      setError("Failed to connect to the RTSP stream. Since the application is deployed in the cloud, please ensure you have started the local helper proxy on your computer (.venv\\Scripts\\python rtsp_proxy.py) and that your camera stream address is valid.");
+    } else {
+      setError("Failed to connect to the RTSP stream. Please verify that the URL is correct, and the camera feed is active and accessible.");
+    }
     cleanupStream();
   };
 
