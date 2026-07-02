@@ -14,18 +14,18 @@ export default function ProcessingStages() {
   const steps = [
     {
       key: "loading-model",
-      label: activeMode === "camera" ? "Initialize Camera Blur Model" : "Initialize Video Blur Model",
+      label: activeMode === "camera" ? "Initialize Camera Blur Model" : activeMode === "rtsp" ? "Initialize RTSP Blur Model" : "Initialize Video Blur Model",
       desc: "Loading WebAssembly vision runtime & BlazeFace detector",
     },
     {
       key: "processing",
-      label: activeMode === "camera" ? "Live Feed Detection & Blur" : "Client-Side Detection & Blur",
-      desc: activeMode === "camera" ? "Capturing webcam stream and performing frame-by-frame face anonymization" : "Processing frames on canvas with hardware-accelerated filters",
+      label: activeMode === "camera" ? "Live Feed Detection & Blur" : activeMode === "rtsp" ? "RTSP Stream Detection & Blur" : "Client-Side Detection & Blur",
+      desc: activeMode === "camera" ? "Capturing webcam stream and performing frame-by-frame face anonymization" : activeMode === "rtsp" ? "Streaming CCTV feed and performing live frame face anonymization" : "Processing frames on canvas with hardware-accelerated filters",
     },
     {
       key: "encoding",
-      label: activeMode === "camera" ? "Live Feed Recording" : "MediaRecorder Encoding",
-      desc: activeMode === "camera" ? "Optionally record the anonymized webcam session to a downloadable file" : "Packaging video & audio tracks into browser-native container",
+      label: activeMode === "camera" ? "Live Feed Recording" : activeMode === "rtsp" ? "Stream Feed Recording" : "MediaRecorder Encoding",
+      desc: activeMode === "camera" || activeMode === "rtsp" ? "Optionally record the anonymized session to a downloadable file" : "Packaging video & audio tracks into browser-native container",
     },
   ];
 

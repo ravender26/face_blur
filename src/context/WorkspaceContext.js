@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect, useRef } from "react";
 const WorkspaceContext = createContext();
 
 export function WorkspaceProvider({ children }) {
-  const [activeMode, setActiveMode] = useState("upload"); // 'upload' | 'camera'
+  const [activeMode, setActiveMode] = useState("upload"); // 'upload' | 'camera' | 'rtsp'
   const [status, setStatus] = useState("idle"); // 'idle', 'loading-model', 'processing', 'encoding', 'done'
   const [loading, setLoading] = useState(false);
   const [registeringFace, setRegisteringFace] = useState(false);

@@ -40,6 +40,19 @@ export default function ModeToggle() {
       >
         Live Webcam Feed
       </button>
+      <button
+        onClick={() => !disabled && handleModeChange("rtsp")}
+        disabled={disabled}
+        className={`px-5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+          activeMode === "rtsp"
+            ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/20"
+            : disabled
+            ? "text-slate-600 cursor-not-allowed"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        CCTV / RTSP Stream
+      </button>
     </div>
   );
 }
