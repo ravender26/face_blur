@@ -6,6 +6,7 @@ import ModeToggle from "../../components/ModeToggle";
 import SelectiveFacePreservation from "../../components/SelectiveFacePreservation";
 import VideoAnonymizer from "../../components/VideoAnonymizer";
 import WebcamAnonymizer from "../../components/WebcamAnonymizer";
+import RtspAnonymizer from "../../components/RtspAnonymizer";
 import ProcessingStages from "../../components/ProcessingStages";
 import HowItWorks from "../../components/HowItWorks";
 import ConsoleLogs from "../../components/ConsoleLogs";
@@ -32,8 +33,10 @@ function DashboardContent() {
           <div className="bg-[#0f131d]/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl">
             {activeMode === "upload" ? (
               <VideoAnonymizer />
-            ) : (
+            ) : activeMode === "camera" ? (
               <WebcamAnonymizer />
+            ) : (
+              <RtspAnonymizer />
             )}
           </div>
 
