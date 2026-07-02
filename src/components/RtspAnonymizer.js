@@ -35,6 +35,7 @@ export default function RtspAnonymizer() {
   const [isRecordingStream, setIsRecordingStream] = useState(false);
   const [streamRecordUrl, setStreamRecordUrl] = useState(null);
   const [debugText, setDebugText] = useState("");
+  const [showProxySettings, setShowProxySettings] = useState(false);
 
   const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
@@ -173,7 +174,29 @@ export default function RtspAnonymizer() {
   const handleImageError = () => {
     console.error("[RTSP Debug] Proxied image stream load error.");
     if (!isLocalhost) {
-      setError("Failed to connect to the RTSP stream. Since the application is deployed in the cloud, please ensure you have started the local helper proxy on your computer (.venv\\Scripts\\python rtsp_proxy.py) and that your camera stream address is valid.");
+      setError(
+        <div className="space-y-2">
+          <p className="font-semibold text-rose-400">Failed to connect to the RTSP stream.</p>
+          <div className="text-[11px] text-slate-300 leading-relaxed font-sans space-y-2">
+            <p>This app is running in the cloud (Vercel). To access your local camera feed:</p>
+            <ol className="list-decimal pl-4 space-y-1.5 text-slate-400">
+              <li>
+                Ensure you have started the local helper proxy on your computer:
+                <code className="block bg-slate-900 border border-slate-800 px-2 py-1 rounded text-fuchsia-400 font-mono text-[10px] mt-1 font-bold">
+                  .venv\Scripts\python rtsp_proxy.py
+                </code>
+              </li>
+              <li>
+                If you are on <strong>Safari</strong> or a <strong>mobile/remote device</strong>, a secure HTTPS tunnel is required. 
+                Toggle the <strong>Advanced Connection Settings</strong> below, copy the Tunnel URL printed by your local proxy console, and paste it there.
+              </li>
+              <li>
+                Verify that your RTSP address is correct and reachable from your computer.
+              </li>
+            </ol>
+          </div>
+        </div>
+      );
     } else {
       setError("Failed to connect to the RTSP stream. Please verify that the URL is correct, and the camera feed is active and accessible.");
     }
@@ -457,20 +480,40 @@ export default function RtspAnonymizer() {
             </div>
             
             {!isLocalhost && (
-              <div className="mt-4 p-4 bg-slate-900/60 border border-slate-800/80 rounded-xl space-y-2 animate-fadeIn">
-                <label className="text-[10px] font-bold text-violet-400 tracking-wider uppercase font-mono block">
-                  Secure Local Proxy Settings (Required for Vercel)
-                </label>
-                <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
-                  Browsers block insecure HTTP links on HTTPS sites (like Vercel). To connect, run a secure HTTPS tunnel to your local proxy port 9999 (e.g. run <code className="bg-slate-950 px-1.5 py-0.5 rounded text-fuchsia-400 font-bold">npx localtunnel --port 9999</code> or <code className="bg-slate-950 px-1.5 py-0.5 rounded text-fuchsia-400 font-bold">ngrok http 9999</code>) and paste the HTTPS tunnel address below:
-                </p>
-                <input
-                  type="text"
-                  value={proxyUrl}
-                  onChange={(e) => setProxyUrl(e.target.value)}
-                  placeholder="https://your-tunnel-subdomain.localtunnel.me"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-350 focus:outline-none focus:border-violet-500/40 font-mono"
-                />
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowProxySettings(!showProxySettings)}
+                  className="text-[10px] font-semibold text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 font-mono focus:outline-none cursor-pointer"
+                >
+                  <svg
+                    className={`w-3 h-3 transition-transform ${showProxySettings ? "rotate-90" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                  Advanced Connection Settings (Safari / Mobile / Tunnels)
+                </button>
+
+                {showProxySettings && (
+                  <div className="p-4 bg-slate-900/60 border border-slate-800/80 rounded-xl space-y-2 animate-fadeIn">
+                    <label className="text-[10px] font-bold text-violet-400 tracking-wider uppercase font-mono block">
+                      Secure Local Proxy Settings
+                    </label>
+                    <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
+                      Browsers block insecure HTTP links on HTTPS sites (like Vercel). To connect on Safari or mobile devices, run a secure HTTPS tunnel to your local proxy port 9999 (the Python helper does this automatically!) and paste the HTTPS tunnel address below:
+                    </p>
+                    <input
+                      type="text"
+                      value={proxyUrl}
+                      onChange={(e) => setProxyUrl(e.target.value)}
+                      placeholder="https://your-tunnel-subdomain.localtunnel.me"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-350 focus:outline-none focus:border-violet-500/40 font-mono"
+                    />
+                  </div>
+                )}
               </div>
             )}
 

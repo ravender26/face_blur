@@ -7,7 +7,62 @@ import sys
 import time
 import os
 import urllib.parse
+import subprocess
+import threading
+import shutil
+import atexit
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+tunnel_proc = None
+
+def cleanup_tunnel():
+    global tunnel_proc
+    if tunnel_proc:
+        print("\n[Tunnel] Closing secure tunnel...")
+        try:
+            tunnel_proc.terminate()
+            tunnel_proc.wait(timeout=2)
+        except Exception:
+            try:
+                tunnel_proc.kill()
+            except Exception:
+                pass
+        tunnel_proc = None
+
+atexit.register(cleanup_tunnel)
+
+def start_tunnel_background(port):
+    global tunnel_proc
+    if not shutil.which("npx"):
+        print("[Tunnel] npx is not installed. Secure tunnel auto-start skipped.")
+        print("[Tunnel] (Only needed if using Safari or mobile devices to access this stream)")
+        return
+    
+    def run_tunnel():
+        global tunnel_proc
+        try:
+            print("[Tunnel] Starting secure HTTPS tunnel via localtunnel...")
+            tunnel_proc = subprocess.Popen(
+                ["npx", "localtunnel", "--port", str(port)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                shell=True
+            )
+            
+            for line in iter(tunnel_proc.stdout.readline, ''):
+                if "your url is:" in line:
+                    url = line.split("your url is:")[1].strip()
+                    print(f"\n==================================================")
+                    print(f"Secure HTTPS Tunnel automatically started!")
+                    print(f"Tunnel URL: {url}")
+                    print(f"==================================================\n")
+                    break
+        except Exception as e:
+            print(f"[Tunnel] Failed to start secure tunnel: {e}")
+
+    threading.Thread(target=run_tunnel, daemon=True).start()
+
 
 class MJPEGHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -87,11 +142,14 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not found")
 
 def run(port=9999):
-    # Bind to localhost to make it accessible to the browser client locally
-    server = HTTPServer(('127.0.0.1', port), MJPEGHandler)
+    # Start the secure HTTPS tunnel in the background
+    start_tunnel_background(port)
+
+    # Bind to 0.0.0.0 to make it accessible to local network devices
+    server = HTTPServer(('0.0.0.0', port), MJPEGHandler)
     print(f"\n==================================================")
     print(f"Local RTSP Proxy Server running on port {port}")
-    print(f"Target URL: http://127.0.0.1:{port}/stream?url=<RTSP_URL>")
+    print(f"Direct Local URL: http://127.0.0.1:{port}/stream?url=<RTSP_URL>")
     print(f"==================================================\n")
     try:
         server.serve_forever()
