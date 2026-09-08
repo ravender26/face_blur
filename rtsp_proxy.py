@@ -33,35 +33,62 @@ atexit.register(cleanup_tunnel)
 
 def start_tunnel_background(port):
     global tunnel_proc
-    if not shutil.which("npx"):
-        print("[Tunnel] npx is not installed. Secure tunnel auto-start skipped.")
-        print("[Tunnel] (Only needed if using Safari or mobile devices to access this stream)")
-        return
     
     def run_tunnel():
         global tunnel_proc
-        try:
-            print("[Tunnel] Starting secure HTTPS tunnel via localtunnel...")
-            tunnel_proc = subprocess.Popen(
-                ["npx", "localtunnel", "--port", str(port)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=True
-            )
-            
-            for line in iter(tunnel_proc.stdout.readline, ''):
-                if "your url is:" in line:
-                    url = line.split("your url is:")[1].strip()
-                    print(f"\n==================================================")
-                    print(f"Secure HTTPS Tunnel automatically started!")
-                    print(f"Tunnel URL: {url}")
-                    print(f"IMPORTANT: Open {url} ONCE in your browser tab and click 'Click to Continue'")
-                    print(f"Then paste '{url}' into Advanced Connection Settings on Vercel.")
-                    print(f"==================================================\n")
-                    break
-        except Exception as e:
-            print(f"[Tunnel] Failed to start secure tunnel: {e}")
+        cf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cloudflared.exe")
+        
+        # 1. Try Cloudflare Tunnel first (No landing page, no cookie blocking, works seamlessly in <img> tags)
+        if os.path.exists(cf_path) or shutil.which("cloudflared"):
+            cmd = [cf_path if os.path.exists(cf_path) else "cloudflared", "tunnel", "--url", f"http://localhost:{port}"]
+            try:
+                print("[Tunnel] Starting secure Cloudflare HTTPS tunnel...")
+                tunnel_proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                
+                for line in iter(tunnel_proc.stdout.readline, ''):
+                    if "trycloudflare.com" in line:
+                        for word in line.split():
+                            if "https://" in word and "trycloudflare.com" in word:
+                                url = word.strip().rstrip('/')
+                                print(f"\n==================================================")
+                                print(f"🚀 Cloudflare HTTPS Tunnel Active!")
+                                print(f"Tunnel URL: {url}")
+                                print(f"Paste '{url}' into Advanced Connection Settings on Vercel.")
+                                print(f"==================================================\n")
+                                return
+            except Exception as e:
+                print(f"[Tunnel] Cloudflare Tunnel start failed: {e}")
+
+        # 2. Fallback to localtunnel via npx
+        if shutil.which("npx"):
+            try:
+                print("[Tunnel] Starting secure HTTPS tunnel via localtunnel...")
+                tunnel_proc = subprocess.Popen(
+                    ["npx", "localtunnel", "--port", str(port)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    shell=True
+                )
+                
+                for line in iter(tunnel_proc.stdout.readline, ''):
+                    if "your url is:" in line:
+                        url = line.split("your url is:")[1].strip()
+                        print(f"\n==================================================")
+                        print(f"Secure HTTPS Tunnel automatically started!")
+                        print(f"Tunnel URL: {url}")
+                        print(f"IMPORTANT: Open {url} ONCE in your browser tab and click 'Click to Continue'")
+                        print(f"Then paste '{url}' into Advanced Connection Settings on Vercel.")
+                        print(f"==================================================\n")
+                        break
+            except Exception as e:
+                print(f"[Tunnel] Failed to start secure tunnel: {e}")
 
     threading.Thread(target=run_tunnel, daemon=True).start()
 
