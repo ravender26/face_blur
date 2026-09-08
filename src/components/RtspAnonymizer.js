@@ -190,7 +190,10 @@ export default function RtspAnonymizer() {
                 </code>
               </li>
               <li>
-                Copy the <strong>Secure HTTPS Tunnel URL</strong> printed in your terminal (e.g. <code className="text-violet-400 font-mono">https://xxxx.loca.lt</code>) and paste it into <strong>Advanced Connection Settings</strong> below.
+                Copy the <strong>Secure HTTPS Tunnel URL</strong> printed in your terminal (e.g. <code className="text-violet-400 font-mono">https://xxxx.loca.lt</code>), open it once in your browser tab, and click <strong>"Click to Continue"</strong>.
+              </li>
+              <li>
+                Paste that Tunnel URL into <strong>Advanced Connection Settings</strong> below and click <strong>Connect Stream</strong>.
               </li>
             </ol>
           </div>

@@ -56,6 +56,8 @@ def start_tunnel_background(port):
                     print(f"\n==================================================")
                     print(f"Secure HTTPS Tunnel automatically started!")
                     print(f"Tunnel URL: {url}")
+                    print(f"IMPORTANT: Open {url} ONCE in your browser tab and click 'Click to Continue'")
+                    print(f"Then paste '{url}' into Advanced Connection Settings on Vercel.")
                     print(f"==================================================\n")
                     break
         except Exception as e:
