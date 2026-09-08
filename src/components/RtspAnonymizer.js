@@ -421,6 +421,7 @@ export default function RtspAnonymizer() {
           ref={rtspImageRef}
           src={streamUrl}
           alt="raw-rtsp-stream-source"
+          crossOrigin="anonymous"
           onError={handleImageError}
           className="absolute -left-[9999px] -top-[9999px] w-[640px] h-[480px] pointer-events-none"
         />
