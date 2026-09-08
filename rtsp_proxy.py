@@ -155,11 +155,11 @@ class MJPEGHandler(BaseHTTPRequestHandler):
                     
                     try:
                         self.wfile.write(b'--frame\r\n')
-                        self.send_header('Content-Type', 'image/jpeg')
-                        self.send_header('Content-Length', str(len(jpeg)))
-                        self.end_headers()
+                        self.wfile.write(b'Content-Type: image/jpeg\r\n')
+                        self.wfile.write(f'Content-Length: {len(jpeg)}\r\n\r\n'.encode('ascii'))
                         self.wfile.write(jpeg.tobytes())
                         self.wfile.write(b'\r\n')
+                        self.wfile.flush()
                     except IOError:
                         # Client disconnected
                         break
