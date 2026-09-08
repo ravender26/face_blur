@@ -52,6 +52,21 @@ export default function RtspAnonymizer() {
   const tickCountRef = useRef(0);
   const isStreamingRef = useRef(false);
 
+  // Restore saved proxy URL on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("rtsp_proxy_url");
+      if (saved) setProxyUrl(saved);
+    }
+  }, []);
+
+  const handleProxyUrlChange = (val) => {
+    setProxyUrl(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("rtsp_proxy_url", val);
+    }
+  };
+
   // Clean up resources on unmount
   useEffect(() => {
     return () => {
@@ -103,6 +118,33 @@ export default function RtspAnonymizer() {
     if (e) e.preventDefault();
     if (!rtspUrl.trim()) {
       setError("Please enter a valid RTSP or video URL.");
+      return;
+    }
+
+    if (!isLocalhost && (proxyUrl.startsWith("http://") || proxyUrl.includes("127.0.0.1") || proxyUrl.includes("localhost"))) {
+      setShowProxySettings(true);
+      setError(
+        <div className="space-y-2">
+          <p className="font-semibold text-rose-400">HTTPS Mixed Content Blocked</p>
+          <div className="text-[11px] text-slate-300 leading-relaxed font-sans space-y-2">
+            <p>Browsers block unencrypted <code className="text-amber-400 font-mono">http://127.0.0.1:9999</code> requests from secure HTTPS websites (Vercel Mixed Content Security).</p>
+            <p className="font-semibold text-slate-200">To fix this in 1 minute:</p>
+            <ol className="list-decimal pl-4 space-y-1.5 text-slate-400">
+              <li>
+                Run <code className="text-fuchsia-400 font-mono bg-slate-900 px-1.5 py-0.5 rounded">python rtsp_proxy.py</code> in your computer terminal.
+              </li>
+              <li>
+                Copy the <strong>Cloudflare HTTPS Tunnel URL</strong> printed in terminal (e.g. <code className="text-violet-400 font-mono">https://xxxx.trycloudflare.com</code>).
+              </li>
+              <li>
+                Paste that <code className="text-violet-400 font-mono">https://...</code> URL into <strong>Secure Local Proxy Settings</strong> below and click <strong>Connect Stream</strong>.
+              </li>
+            </ol>
+          </div>
+        </div>
+      );
+      setLoading(false);
+      setStatus("idle");
       return;
     }
 
@@ -511,8 +553,8 @@ export default function RtspAnonymizer() {
                     <input
                       type="text"
                       value={proxyUrl}
-                      onChange={(e) => setProxyUrl(e.target.value)}
-                      placeholder="https://your-tunnel-subdomain.localtunnel.me"
+                      onChange={(e) => handleProxyUrlChange(e.target.value)}
+                      placeholder="https://your-tunnel.trycloudflare.com"
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-350 focus:outline-none focus:border-violet-500/40 font-mono"
                     />
                   </div>
