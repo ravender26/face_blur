@@ -29,7 +29,7 @@ export default function RtspAnonymizer() {
   } = useWorkspace();
 
   const [rtspUrl, setRtspUrl] = useState("rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov");
-  const [proxyUrl, setProxyUrl] = useState("http://127.0.0.1:9999");
+  const [proxyUrl, setProxyUrl] = useState("");
   const [streamUrl, setStreamUrl] = useState(null);
   const [isStreamActive, setIsStreamActive] = useState(false);
   const [isRecordingStream, setIsRecordingStream] = useState(false);
@@ -56,7 +56,14 @@ export default function RtspAnonymizer() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("rtsp_proxy_url");
-      if (saved) setProxyUrl(saved);
+      if (saved) {
+        // On non-localhost, discard any saved insecure http:// address
+        if (!isLocalhost && (saved.startsWith("http://") || saved.includes("127.0.0.1") || saved.includes("localhost"))) {
+          localStorage.removeItem("rtsp_proxy_url");
+        } else {
+          setProxyUrl(saved);
+        }
+      }
     }
   }, []);
 
@@ -121,23 +128,49 @@ export default function RtspAnonymizer() {
       return;
     }
 
+    if (!isLocalhost && !proxyUrl.trim()) {
+      setShowProxySettings(true);
+      setError(
+        <div className="space-y-2">
+          <p className="font-semibold text-amber-400">Secure Proxy URL Required</p>
+          <div className="text-[11px] text-slate-300 leading-relaxed font-sans space-y-2">
+            <p>On Vercel (HTTPS), you must provide a secure tunnel URL to your local RTSP proxy.</p>
+            <ol className="list-decimal pl-4 space-y-1.5 text-slate-400">
+              <li>
+                Run <code className="text-fuchsia-400 font-mono bg-slate-900 px-1.5 py-0.5 rounded">python rtsp_proxy.py</code> in your computer terminal.
+              </li>
+              <li>
+                Copy the <strong>Cloudflare Tunnel URL</strong> printed (e.g. <code className="text-violet-400 font-mono">https://xxxx.trycloudflare.com</code>).
+              </li>
+              <li>
+                Paste it into the <strong>Secure Local Proxy Settings</strong> field below, then click <strong>Connect Stream</strong>.
+              </li>
+            </ol>
+          </div>
+        </div>
+      );
+      setLoading(false);
+      setStatus("idle");
+      return;
+    }
+
     if (!isLocalhost && (proxyUrl.startsWith("http://") || proxyUrl.includes("127.0.0.1") || proxyUrl.includes("localhost"))) {
       setShowProxySettings(true);
       setError(
         <div className="space-y-2">
           <p className="font-semibold text-rose-400">HTTPS Mixed Content Blocked</p>
           <div className="text-[11px] text-slate-300 leading-relaxed font-sans space-y-2">
-            <p>Browsers block unencrypted <code className="text-amber-400 font-mono">http://127.0.0.1:9999</code> requests from secure HTTPS websites (Vercel Mixed Content Security).</p>
-            <p className="font-semibold text-slate-200">To fix this in 1 minute:</p>
+            <p>Browsers block unencrypted <code className="text-amber-400 font-mono">http://</code> requests from secure HTTPS websites (Vercel Mixed Content Security).</p>
+            <p className="font-semibold text-slate-200">You must use a secure HTTPS tunnel URL:</p>
             <ol className="list-decimal pl-4 space-y-1.5 text-slate-400">
               <li>
                 Run <code className="text-fuchsia-400 font-mono bg-slate-900 px-1.5 py-0.5 rounded">python rtsp_proxy.py</code> in your computer terminal.
               </li>
               <li>
-                Copy the <strong>Cloudflare HTTPS Tunnel URL</strong> printed in terminal (e.g. <code className="text-violet-400 font-mono">https://xxxx.trycloudflare.com</code>).
+                Copy the <strong>Cloudflare HTTPS Tunnel URL</strong> printed (e.g. <code className="text-violet-400 font-mono">https://xxxx.trycloudflare.com</code>).
               </li>
               <li>
-                Paste that <code className="text-violet-400 font-mono">https://...</code> URL into <strong>Secure Local Proxy Settings</strong> below and click <strong>Connect Stream</strong>.
+                Replace the current URL in <strong>Secure Local Proxy Settings</strong> below with that <code className="text-violet-400 font-mono">https://...</code> URL and click <strong>Connect Stream</strong>.
               </li>
             </ol>
           </div>
