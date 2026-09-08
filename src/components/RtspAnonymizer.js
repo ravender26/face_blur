@@ -35,9 +35,9 @@ export default function RtspAnonymizer() {
   const [isRecordingStream, setIsRecordingStream] = useState(false);
   const [streamRecordUrl, setStreamRecordUrl] = useState(null);
   const [debugText, setDebugText] = useState("");
-  const [showProxySettings, setShowProxySettings] = useState(false);
 
   const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const [showProxySettings, setShowProxySettings] = useState(!isLocalhost);
 
   const rtspImageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -176,22 +176,21 @@ export default function RtspAnonymizer() {
     if (!isLocalhost) {
       setError(
         <div className="space-y-2">
-          <p className="font-semibold text-rose-400">Failed to connect to the RTSP stream.</p>
+          <p className="font-semibold text-rose-400">Failed to connect to the RTSP stream on Vercel.</p>
           <div className="text-[11px] text-slate-300 leading-relaxed font-sans space-y-2">
-            <p>This app is running in the cloud (Vercel). To access your local camera feed:</p>
+            <p>Because this app is deployed in the cloud (Vercel over HTTPS):</p>
             <ol className="list-decimal pl-4 space-y-1.5 text-slate-400">
               <li>
-                Ensure you have started the local helper proxy on your computer:
+                Vercel cloud servers cannot access local LAN IPs (e.g. <code className="text-amber-400 font-mono">192.168.29.52</code>).
+              </li>
+              <li>
+                Run the local proxy helper on your computer:
                 <code className="block bg-slate-900 border border-slate-800 px-2 py-1 rounded text-fuchsia-400 font-mono text-[10px] mt-1 font-bold">
-                  .venv\Scripts\python rtsp_proxy.py
+                  python rtsp_proxy.py
                 </code>
               </li>
               <li>
-                If you are on <strong>Safari</strong> or a <strong>mobile/remote device</strong>, a secure HTTPS tunnel is required. 
-                Toggle the <strong>Advanced Connection Settings</strong> below, copy the Tunnel URL printed by your local proxy console, and paste it there.
-              </li>
-              <li>
-                Verify that your RTSP address is correct and reachable from your computer.
+                Copy the <strong>Secure HTTPS Tunnel URL</strong> printed in your terminal (e.g. <code className="text-violet-400 font-mono">https://xxxx.loca.lt</code>) and paste it into <strong>Advanced Connection Settings</strong> below.
               </li>
             </ol>
           </div>
